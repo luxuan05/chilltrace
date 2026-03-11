@@ -7,6 +7,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { AppDataProvider } from "@/context/AppDataContext";
 import Index from "./pages/Index";
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import BuyerDashboard from "./pages/BuyerDashboard";
 import SupplierDashboard from "./pages/SupplierDashboard";
 import DriverDashboard from "./pages/DriverDashboard";
@@ -26,6 +27,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/login/:role" element={<LoginPage />} />
               <Route path="/buyer/*" element={<BuyerDashboard />} />
+              <Route path="/register" element={<RegisterPage />} />
               <Route path="/supplier/*" element={<SupplierDashboard />} />
               <Route path="/driver/*" element={<DriverDashboard />} />
               <Route path="*" element={<NotFound />} />

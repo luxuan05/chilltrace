@@ -33,7 +33,7 @@ const DashboardLayout = ({ children, navItems, title }: DashboardLayoutProps) =>
           <div className="flex items-center gap-2">
             <Snowflake className="h-5 w-5 text-sidebar-primary" />
             <span className="font-semibold text-sidebar-accent-foreground text-sm tracking-wide">
-              FrostChain
+              ChillTrace
             </span>
           </div>
           <p className="text-xs text-sidebar-foreground mt-1 opacity-70">{title}</p>

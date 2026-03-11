@@ -45,7 +45,7 @@ const Index = () => {
           <div className="flex items-center justify-center gap-2 mb-4">
             <Snowflake className="h-8 w-8 text-accent" />
             <span className="text-lg font-semibold tracking-widest uppercase text-accent">
-              FrostChain
+              ChillTrace
             </span>
           </div>
           <h1 className="text-4xl md:text-6xl font-bold text-primary-foreground mb-4 tracking-tight">
