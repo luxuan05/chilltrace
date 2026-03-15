@@ -1,0 +1,39 @@
+volumes:
+  rabbitmq_data:
+    name: esd_rabbitmq_data
+
+networks:
+  esd-net:
+    driver: bridge
+    name: esd-net
+
+services:
+
+  ####################################
+  # RabbitMQ: The messaging broker   
+  ####################################
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: esd-rabbit
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes: 
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - esd-net
+
+  notification:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      - rabbitmq
+    environment:
+      TELEGRAM_TOKEN: #YOUR_TOKEN
+      CHAT_ID: #YOUR_CHAT_ID
+      GMAIL_FROM: #yourproject@gmail.com
+      GMAIL_APP_PASSWORD: #your 16-char app password
+    networks:
+      - esd-net
