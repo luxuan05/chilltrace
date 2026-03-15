@@ -25,9 +25,28 @@ services:
       - esd-net
 
   telegram-service:
-    build: .
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: telegram.py
     depends_on:
       - rabbitmq
     environment:
       TELEGRAM_TOKEN: #YOUR_TOKEN
       CHAT_ID: #YOUR_CHAT_ID
+
+  email-service:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: emailService.py
+    restart: always
+    depends_on:
+      - rabbitmq
+    environment:
+      GMAIL_FROM: #sent from email
+      GMAIL_APP_PASSWORD: #gmail app password
+    networks:
+      - esd-net
