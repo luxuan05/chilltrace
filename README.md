@@ -42,6 +42,7 @@ pip install -r requirements.txt
 
 # Step 4: Run Flask
 python app.py
+```
 
 ## What technologies are used for this project?
 
