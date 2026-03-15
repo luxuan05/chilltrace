@@ -9,3 +9,6 @@ __pycache__/
 
 # mac
 .DS_Store
+
+# secret 
+ca.pem
