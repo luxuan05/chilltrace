@@ -4,6 +4,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 import amqp_lib
+import requests
 
 rabbit_host   = "rabbitmq"
 rabbit_port   = 5672
@@ -11,8 +12,19 @@ exchange_name = "order_topic"
 exchange_type = "topic"
 queue_name    = "Activity_Log"
 
+# ── Telegram config ───────────────────────────────────────────────────────────
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID        = os.getenv("CHAT_ID")
+
+# ── Gmail config ──────────────────────────────────────────────────────────────
 GMAIL_FROM         = os.getenv("GMAIL_FROM")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+
+
+def send_telegram(message):
+    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    requests.post(url, json=payload)
 
 
 def send_email(recipient_email, subject, body):
@@ -46,10 +58,12 @@ def callback(channel, method, properties, body):
     email_body      = message.get("body")
 
     if not recipient_email or not subject or not email_body:
-        print(f"Missing recipient_email, subject, or body. Skipping.")
+        print("Missing recipient_email, subject, or body. Skipping.")
         return
 
     send_email(recipient_email, subject, email_body)
+    send_telegram(f"{subject}\n\n{email_body}")
+
     print()
 
 
