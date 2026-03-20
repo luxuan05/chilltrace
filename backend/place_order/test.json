@@ -1,0 +1,17 @@
+{
+  "customer_id": 1001,
+  "items": [
+    {
+      "item_id": 1,
+      "qty": 5
+    },
+
+    {
+      "item_id": 2,
+      "qty": 130
+    }
+  ],
+  "address": "1 Stamford Road, Singapore S010001",
+  "delivery_date": "27 March 2026",
+  "status": ""
+}
