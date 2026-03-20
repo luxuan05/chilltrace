@@ -3,13 +3,32 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 import os
 import uuid
+from dotenv import load_dotenv
+from pathlib import Path
+from sqlalchemy.engine.url import make_url
 
 app = Flask(__name__)
 
 # Read from environment variables
-DATABASE_URL = os.getenv('DATABASE_URL')
-SSL_CA = os.getenv('SSL_CA')
-PORT = int(os.getenv('PORT', 5000))
+# DATABASE_URL = os.getenv('DATABASE_URL')
+# SSL_CA = os.getenv('SSL_CA')
+# PORT = int(os.getenv('PORT', 5000))
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env", override=True)   # single call, force local .env
+
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip().strip('"').strip("'")
+SSL_CA = (os.getenv("SSL_CA") or "").strip().strip('"').strip("'")
+PORT = int((os.getenv("PORT") or "5000").strip())
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL missing in backend/inventory/.env")
+
+# Validate URL early
+try:
+    make_url(DATABASE_URL)
+except Exception:
+    raise RuntimeError(f"Invalid DATABASE_URL value: {DATABASE_URL!r}")
 
 # Configure Flask app
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
@@ -29,9 +48,9 @@ db = SQLAlchemy(app)
 # DATABASE MODELS
 # ============================================================================
 
-class Item(db.Model):
-    """Maps to your existing 'items' table"""
-    __tablename__ = 'items'
+class Inventory(db.Model):
+    """Maps to your existing 'Inventory' table"""
+    __tablename__ = 'Inventory'
     
     ItemID = db.Column('ItemID', db.Integer, primary_key=True)
     SupplierID = db.Column('SupplierID', db.Integer, nullable=False)
@@ -45,11 +64,11 @@ class Item(db.Model):
     MaxTemperature = db.Column('MaxTemperature', db.Float)
     
     # Additional columns for inventory management
-    qty_reserved = db.Column('qty_reserved', db.Integer, default=0)
-    status = db.Column('status', db.String(50), default='AVAILABLE')
-    spoiled_reason = db.Column('spoiled_reason', db.String(255))
-    spoiled_at = db.Column('spoiled_at', db.DateTime)
-    spoiled_by_delivery_id = db.Column('spoiled_by_delivery_id', db.String(100))
+    # qty_reserved = db.Column('qty_reserved', db.Integer, default=0)
+    # status = db.Column('status', db.String(50), default='AVAILABLE')
+    # spoiled_reason = db.Column('spoiled_reason', db.String(255))
+    # spoiled_at = db.Column('spoiled_at', db.DateTime)
+    # spoiled_by_delivery_id = db.Column('spoiled_by_delivery_id', db.String(100))
     
     def to_dict(self):
         return {
@@ -64,35 +83,35 @@ class Item(db.Model):
             'description': self.Description,
             'min_temperature': self.MinTemperature,
             'max_temperature': self.MaxTemperature,
-            'status': self.status,
-            'spoiled_reason': self.spoiled_reason,
-            'spoiled_at': self.spoiled_at.isoformat() if self.spoiled_at else None,
-            'spoiled_by_delivery_id': self.spoiled_by_delivery_id
+            # 'status': self.status,
+            # 'spoiled_reason': self.spoiled_reason,
+            # 'spoiled_at': self.spoiled_at.isoformat() if self.spoiled_at else None,
+            # 'spoiled_by_delivery_id': self.spoiled_by_delivery_id
         }
 
-class Reservation(db.Model):
-    """Tracks stock reservations for orders"""
-    __tablename__ = 'reservations'
+# class Reservation(db.Model):
+#     """Tracks stock reservations for orders"""
+#     __tablename__ = 'reservations'
     
-    id = db.Column(db.String(100), primary_key=True)
-    item_id = db.Column(db.Integer, db.ForeignKey('items.ItemID'), nullable=False)
-    order_id = db.Column(db.String(100), nullable=False)
-    quantity_reserved = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(50), default='ACTIVE')
-    expires_at = db.Column(db.DateTime, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    committed_at = db.Column(db.DateTime)
+#     id = db.Column(db.String(100), primary_key=True)
+#     item_id = db.Column(db.Integer, db.ForeignKey('items.ItemID'), nullable=False)
+#     order_id = db.Column(db.String(100), nullable=False)
+#     quantity_reserved = db.Column(db.Integer, nullable=False)
+#     status = db.Column(db.String(50), default='ACTIVE')
+#     expires_at = db.Column(db.DateTime, nullable=False)
+#     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+#     committed_at = db.Column(db.DateTime)
     
-    def to_dict(self):
-        return {
-            'reservation_id': self.id,
-            'item_id': self.item_id,
-            'order_id': self.order_id,
-            'quantity_reserved': self.quantity_reserved,
-            'status': self.status,
-            'expires_at': self.expires_at.isoformat(),
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
+#     def to_dict(self):
+#         return {
+#             'reservation_id': self.id,
+#             'item_id': self.item_id,
+#             'order_id': self.order_id,
+#             'quantity_reserved': self.quantity_reserved,
+#             'status': self.status,
+#             'expires_at': self.expires_at.isoformat(),
+#             'created_at': self.created_at.isoformat() if self.created_at else None
+#         }
 
 # ============================================================================
 # API ENDPOINTS - ITEMS
@@ -165,28 +184,30 @@ def update_item(item_id):
 # API ENDPOINTS - STOCK OPERATIONS
 # ============================================================================
 
-@app.route('/api/inventory/check-availability', methods=['POST'])
-def check_availability():
+@app.route('/inventory/check-availability/<string:item_id>', methods=['GET'])
+def check_availability(item_id):
     """Check if item has sufficient stock"""
-    data = request.json
-    item = Item.query.get(data['item_id'])
+    # data = request.json
+    print(item_id)
+    item = Inventory.query.get(item_id)
     
     if not item:
-        return jsonify({'available': False, 'error': 'Item not found'}), 404
+        return jsonify({'error': 'Item not found'}), 404
+    else: 
+        return jsonify({'item_id': item_id, 'stock available': item.Qty}), 200
+    # available_qty = item.Qty - item.qty_reserved
     
-    available_qty = item.Qty - item.qty_reserved
-    
-    return jsonify({
-        'available': available_qty >= data['quantity'] and item.status == 'AVAILABLE',
-        'item': item.to_dict(),
-        'quantity_available': available_qty,
-        'quantity_requested': data['quantity'],
-        'requires_cold_chain': item.MinTemperature is not None,
-        'temperature_range': {
-            'min': item.MinTemperature,
-            'max': item.MaxTemperature
-        } if item.MinTemperature is not None else None
-    }), 200
+    # return jsonify({
+    #     'available': available_qty >= data['quantity'] and item.status == 'AVAILABLE',
+    #     'item': item.to_dict(),
+    #     'quantity_available': available_qty,
+    #     'quantity_requested': data['quantity'],
+    #     'requires_cold_chain': item.MinTemperature is not None,
+    #     'temperature_range': {
+    #         'min': item.MinTemperature,
+    #         'max': item.MaxTemperature
+    #     } if item.MinTemperature is not None else None
+    # }), 200
 
 @app.route('/api/inventory/reserve', methods=['POST'])
 def reserve_stock():
@@ -437,13 +458,13 @@ def init_db():
 # ============================================================================
 
 if __name__ == '__main__':
-    init_db()
+    # init_db()
     print("\n" + "="*70)
     print("🚀 INVENTORY MICROSERVICE STARTED")
     print("="*70)
     print(f"Port: {PORT}")
-    print(f"Base URL: http://localhost:{PORT}/api/inventory")
-    print(f"Health Check: http://localhost:{PORT}/api/inventory/health")
+    print(f"Base URL: http://localhost:{PORT}/inventory")
+    print(f"Health Check: http://localhost:{PORT}/inventory/health")
     print("Database: Aiven MySQL Cloud (SSL)")
     print("="*70 + "\n")
     
