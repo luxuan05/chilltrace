@@ -1,14 +1,16 @@
 {
-  "CustomerID": 1001,
+  "CustomerID": 1,
   "OrderItems": [
     {
       "ItemID": 1,
-      "Quantity": 5
+      "Quantity": 5,
+      "UnitPrice": 5.5
     },
 
     {
       "ItemID": 2,
-      "Quantity": 100
+      "Quantity": 100,
+      "UnitPrice": 4.8
     }
   ],
   "SupplierID": 1,

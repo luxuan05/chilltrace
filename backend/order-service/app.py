@@ -46,7 +46,7 @@ def create_order():
             return jsonify({"error": "Request body must be JSON"}), 400
 
         customer_id = data.get("CustomerID")
-        supplier_id = data.get("SupplierId")
+        supplier_id = data.get("SupplierID")
         scheduled_date_str = data.get("ScheduledDate")
         items = data.get("OrderItems", [])
 
@@ -54,7 +54,7 @@ def create_order():
             return jsonify({"error": "CustomerID is required"}), 400
 
         if supplier_id is None:
-            return jsonify({"error": "SupplierId is required"}), 400
+            return jsonify({"error": "SupplierID is required"}), 400
 
         if not isinstance(items, list) or len(items) == 0:
             return jsonify({"error": "OrderItems must be a non-empty list"}), 400
