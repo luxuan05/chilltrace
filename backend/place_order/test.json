@@ -1,17 +1,17 @@
 {
-  "customer_id": 1001,
-  "items": [
+  "CustomerID": 1001,
+  "OrderItems": [
     {
-      "item_id": 1,
-      "qty": 5
+      "ItemID": 1,
+      "Quantity": 5
     },
 
     {
-      "item_id": 2,
-      "qty": 130
+      "ItemID": 2,
+      "Quantity": 100
     }
   ],
-  "address": "1 Stamford Road, Singapore S010001",
-  "delivery_date": "27 March 2026",
-  "status": ""
+  "SupplierID": 1,
+  "Address": "1 Stamford Road, Singapore S010001",
+  "ScheduledDate": "2026-03-27"
 }

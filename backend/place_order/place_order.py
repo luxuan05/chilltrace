@@ -21,15 +21,17 @@ def place_order():
             print("\nReceived an order in JSON: ", order)
 
             # Send over to inventory microservice
-            result, http_status = checkInventory(order["items"])
+            check_result, http_status = checkInventory(order["OrderItems"])
             
-            for item in result['data']:
+            for item in check_result['data']:
                 if not item['enough stock']:
                     return jsonify({
-                        "item_id": item['item_id'],
+                        "ItemID": item['ItemID'],
                         "Error": "Not enough stock"
                     }), 404
                 
+            order_result, http_status = createOrder(order)
+            
             return jsonify({
                 "Message": "Proceed to make order"
             }), 200
@@ -66,13 +68,13 @@ def checkInventory(items):
     check_result = []
     try:
         for item in items:
-            item_result, http_status = invoke_http('http://localhost:5000/inventory/check-availability/' + str(item["item_id"]), method='GET')
+            item_result, http_status = invoke_http('http://localhost:5000/inventory/check-availability/' + str(item["ItemID"]), method='GET')
             # print(f"http status: {http_status}\ncheck result: {item_result}\n")
 
-            if item['qty'] <= item_result['stock available']:
-                check_result.append({'item_id': item['item_id'], 'enough stock': True})
+            if item['Quantity'] <= item_result['stock available']:
+                check_result.append({'ItemID': item['ItemID'], 'enough stock': True})
             else:
-                check_result.append({'item_id': item['item_id'], 'enough stock': False})
+                check_result.append({'ItemID': item['ItemID'], 'enough stock': False})
 
         return {
             "code": http_status,
@@ -92,7 +94,28 @@ def checkInventory(items):
                     "exception": ex_str,
                 }
         ), 500
-    
+
+def createOrder(orderItems):
+    print("Invoking the order microservice...")
+
+    try:
+        order_result, http_status = invoke_http('/orders', method='POST', json=orderItems)
+
+        print(f"Status: {http_status}\nOrder Result: {order_result}")
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return jsonify(
+                {
+                    "code": 500,
+                    "message": "check order internal error:",
+                    "exception": ex_str,
+                }
+        ), 500
 
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":

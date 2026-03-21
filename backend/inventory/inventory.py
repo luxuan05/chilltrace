@@ -194,7 +194,7 @@ def check_availability(item_id):
     if not item:
         return jsonify({'error': 'Item not found'}), 404
     else: 
-        return jsonify({'item_id': item_id, 'stock available': item.Qty}), 200
+        return jsonify({'ItemID': item_id, 'stock available': item.Qty}), 200
     # available_qty = item.Qty - item.qty_reserved
     
     # return jsonify({
