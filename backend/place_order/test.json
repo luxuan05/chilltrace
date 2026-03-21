@@ -3,14 +3,12 @@
   "OrderItems": [
     {
       "ItemID": 1,
-      "Quantity": 5,
-      "UnitPrice": 5.5
+      "Quantity": 5
     },
 
     {
       "ItemID": 2,
-      "Quantity": 100,
-      "UnitPrice": 4.8
+      "Quantity": 5
     }
   ],
   "SupplierID": 1,
