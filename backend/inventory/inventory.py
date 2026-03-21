@@ -76,7 +76,6 @@ class Inventory(db.Model):
             'supplier_id': self.SupplierID,
             'name': self.Name,
             'quantity_available': self.Qty,
-            'quantity_reserved': self.qty_reserved,
             'price': self.Price,
             'category': self.Category,
             'unit': self.Unit,
@@ -124,7 +123,7 @@ def get_items():
     status = request.args.get('status')
     supplier_id = request.args.get('supplier_id', type=int)
     
-    query = Item.query
+    query = Inventory.query
     if category:
         query = query.filter_by(Category=category)
     if status:
@@ -138,14 +137,14 @@ def get_items():
 @app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
 def get_item(item_id):
     """Get single item by ID"""
-    item = Item.query.get_or_404(item_id)
+    item = Inventory.query.get_or_404(item_id)
     return jsonify(item.to_dict()), 200
 
 @app.route('/api/inventory/items', methods=['POST'])
 def create_item():
     """Create new item"""
     data = request.json
-    item = Item(
+    item = Inventory(
         SupplierID=data['supplier_id'],
         Name=data['name'],
         Qty=data['quantity'],
@@ -162,15 +161,16 @@ def create_item():
     db.session.commit()
     return jsonify(item.to_dict()), 201
 
-@app.route('/api/inventory/items/<int:item_id>', methods=['PUT'])
+@app.route('/inventory/items/<int:item_id>', methods=['PUT'])
 def update_item(item_id):
     """Update item"""
-    item = Item.query.get_or_404(item_id)
+    item = Inventory.query.get_or_404(item_id)
     data = request.json
     
-    if 'quantity' in data:
-        item.Qty = data['quantity']
-    if 'price' in data:
+    if 'Quantity' in data:
+        if 'Operation' in data and data['Operation'] == 'minus':
+            item.Qty -= data['Quantity']
+    if 'Price' in data:
         item.Price = data['price']
     if 'status' in data:
         item.status = data['status']
@@ -194,7 +194,7 @@ def check_availability(item_id):
     if not item:
         return jsonify({'error': 'Item not found'}), 404
     else: 
-        return jsonify({'ItemID': item_id, 'stock available': item.Qty}), 200
+        return jsonify({'ItemID': item_id, 'stock available': item.Qty, "UnitPrice": item.Price, "SupplierID": item.SupplierID}), 200
     # available_qty = item.Qty - item.qty_reserved
     
     # return jsonify({
