@@ -459,8 +459,7 @@ def init_db():
 
 if __name__ == '__main__':
     # init_db()
-    print("\n" + "="*70)
-    print("🚀 INVENTORY MICROSERVICE STARTED")
+    print("INVENTORY MICROSERVICE STARTED")
     print("="*70)
     print(f"Port: {PORT}")
     print(f"Base URL: http://localhost:{PORT}/inventory")
