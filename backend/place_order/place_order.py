@@ -21,8 +21,12 @@ def place_order():
             print("\nReceived an order in JSON: ", order)
 
             # Send over to inventory microservice
+            check_result = []
             check_result, http_status = checkInventory(order["OrderItems"])
             
+            if http_status >= 400:
+                return jsonify(check_result), http_status
+
             for item in check_result['data']:
                 if not item['enough stock']:
                     return jsonify({
@@ -31,13 +35,17 @@ def place_order():
                     }), 404
                 
             order_result, http_status = createOrder(order)
+
+            if http_status >= 400:
+                return jsonify(order_result), http_status
             
+            print(f"Order Result: {order_result}\nStatus: {http_status}")
+
             return jsonify({
-                "Message": "Proceed to make order"
+                "Message": "Order Received"
             }), 200
 
         
-
         except Exception as e:
             # Unexpected error in code
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -68,8 +76,11 @@ def checkInventory(items):
     check_result = []
     try:
         for item in items:
-            item_result, http_status = invoke_http('http://localhost:5000/inventory/check-availability/' + str(item["ItemID"]), method='GET')
+            item_result, http_status = invoke_http('http://localhost:5001/inventory/check-availability/' + str(item["ItemID"]), method='GET')
             # print(f"http status: {http_status}\ncheck result: {item_result}\n")
+
+            if http_status != 200 or "stock available" not in item_result:
+                return {"code": http_status, "message": "Inventory check failed", "details": item_result}, http_status
 
             if item['Quantity'] <= item_result['stock available']:
                 check_result.append({'ItemID': item['ItemID'], 'enough stock': True})
@@ -87,37 +98,34 @@ def checkInventory(items):
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
 
-        return jsonify(
-                {
+        return {
                     "code": 500,
                     "message": "check inventory internal error:",
                     "exception": ex_str,
-                }
-        ), 500
+                }, 500
 
 def createOrder(orderItems):
     print("Invoking the order microservice...")
 
     try:
-        order_result, http_status = invoke_http('/orders', method='POST', json=orderItems)
+        order_result, http_status = invoke_http('http://localhost:5002/orders', method='POST', json=orderItems)
 
         print(f"Status: {http_status}\nOrder Result: {order_result}")
-
+        return order_result, http_status
+    
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
 
-        return jsonify(
-                {
+        return {
                     "code": 500,
-                    "message": "check order internal error:",
+                    "message": "check order internal error",
                     "exception": ex_str,
-                }
-        ), 500
+                }, 500
 
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
