@@ -1,5 +1,0 @@
-Flask
-Flask-SQLAlchemy
-PyMySQL
-python-dotenv
-cryptography

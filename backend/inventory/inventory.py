@@ -458,13 +458,5 @@ def init_db():
 # ============================================================================
 
 if __name__ == '__main__':
-    # init_db()
-    print("INVENTORY MICROSERVICE STARTED")
-    print("="*70)
-    print(f"Port: {PORT}")
-    print(f"Base URL: http://localhost:{PORT}/inventory")
-    print(f"Health Check: http://localhost:{PORT}/inventory/health")
-    print("Database: Aiven MySQL Cloud (SSL)")
-    print("="*70 + "\n")
-    
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+    print("This flask is for " + os.path.basename(__file__) + ": payments ...")
+    app.run(host='0.0.0.0', port=5001, debug=True)
