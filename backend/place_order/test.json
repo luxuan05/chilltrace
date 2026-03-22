@@ -3,12 +3,12 @@
   "OrderItems": [
     {
       "ItemID": 1,
-      "Quantity": 5
+      "Quantity": 1
     },
 
     {
       "ItemID": 2,
-      "Quantity": 5
+      "Quantity": 1
     }
   ],
   "SupplierID": 1,

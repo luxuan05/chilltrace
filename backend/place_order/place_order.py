@@ -52,17 +52,34 @@ def place_order():
                 return jsonify(order_result), http_status
             
             print(f"Successfully created order")
+            
+            customerID = order_result['order']['CustomerID']
+            orderID = order_result['order']['ID']
+            payment_amount = int(order_result['order']['TotalPrice']*100)
+            
 
             # Update inventory with new quantity for reach order item
             update_result, http_status = updateInventory(order['OrderItems'])
             
             print("Successfully updated inventory")
 
-            return jsonify({
-                "Message": "Make payment"
-            }), 200
+            # Send payment details to payment microservice
+            payment_details = {
+                "CustomerID": customerID,
+                "OrderID": orderID,
+                "Amount": payment_amount
+            }
+            
+            print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
 
+            payment_result, http_status = makePayment(payment_details)
+
+            return {
+                "code": 201,
+                "result": payment_result
+            }, 201
         
+
         except Exception as e:
             # Unexpected error in code
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -86,6 +103,10 @@ def place_order():
         }
     ), 400
 
+@app.route('/placeorder/receive-payment-status', methods=['POST'])
+def receivePayment():
+    payload = request.data
+    
 
 def checkInventory(items):
     # Send the order info to inventory microservice
@@ -168,7 +189,28 @@ def updateInventory(orderItems):
                     "message": "check Inventory internal error",
                     "exception": ex_str,
                 }, 500
+    
+def makePayment(paymentDetails):
+    print("Invoking payment microservice...")
+    
+    try:
+        secret, http_status = invoke_http('http://localhost:5004/payment/create-intent', method='POST', json=paymentDetails)
+
+        return secret, http_status
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return {
+                    "code": 500,
+                    "message": "check Payment internal error",
+                    "exception": ex_str,
+                }, 500
+
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5006, debug=True)

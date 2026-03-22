@@ -1,8 +1,5 @@
-from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from os import environ
 from dotenv import load_dotenv
 import os
 import stripe
@@ -17,10 +14,10 @@ CURR = 'SGD'
 
 @app.route("/payment/create-intent", methods=['POST'])
 def create_intent():
-    cid = request.json.get('customer_id', None)
-
+    cid = request.json.get('CustomerID', None)
+    oid = request.json.get('OrderID', None)
     # total amount should be in cents
-    amt = request.json.get('amount', None)
+    amt = request.json.get('Amount', None)
 
     try:
         
@@ -40,8 +37,9 @@ def create_intent():
             {
                 "code": 201,
                 "data": {
-                    'customer_id': cid,
-                    'amount': amt,
+                    'CustomerID': cid,
+                    'OrderID': oid,
+                    'Amount': amt,
                     'client_secret': intent.client_secret
                 }
             }
