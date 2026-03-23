@@ -192,9 +192,9 @@ def check_availability(item_id):
     item = Inventory.query.get(item_id)
     
     if not item:
-        return jsonify({'error': 'Item not found'}), 404
+        return {'error': 'Item not found'}, 404
     else: 
-        return jsonify({'ItemID': item_id, 'stock available': item.Qty, "UnitPrice": item.Price, "SupplierID": item.SupplierID}), 200
+        return {'ItemID': item_id, 'stock available': item.Qty, "UnitPrice": item.Price, "SupplierID": item.SupplierID}, 200
     # available_qty = item.Qty - item.qty_reserved
     
     # return jsonify({
