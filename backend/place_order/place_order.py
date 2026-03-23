@@ -118,6 +118,7 @@ def receivePayment():
         print(f"Orchestrator received success message for Order ID: {orderID}")
 
         update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
+        print(f"result: {update_result}\nStatus: {status}")
         return jsonify(update_result), status
     
 
