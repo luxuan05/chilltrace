@@ -29,7 +29,6 @@ def place_order():
                 return jsonify(check_result), http_status
 
             print(f"Successfully checked inventory")
-
             # check if enough stock
             for item in check_result['data']:
                 if not item['enough stock']:
@@ -74,10 +73,10 @@ def place_order():
 
             payment_result, http_status = makePayment(payment_details)
 
-            return {
+            return jsonify({
                 "code": 201,
                 "result": payment_result
-            }, 201
+            }), 201
         
 
         except Exception as e:
@@ -105,8 +104,26 @@ def place_order():
 
 @app.route('/placeorder/receive-payment-status', methods=['POST'])
 def receivePayment():
-    payload = request.data
+    try:
+        data = request.get_json(silent=True) or {}
+
+        orderID = data.get('OrderID')
+        customerID = data.get('CustomerID')
+        paymentStatus = data.get('Payment Status')
+
+        if not orderID or paymentStatus != 'success':
+            return jsonify({'error': 'Invalid data or payment not successful'}), 400
+
+
+        print(f"Orchestrator received success message for Order ID: {orderID}")
+
+        update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
+        return jsonify(update_result), status
     
+
+    except Exception as e:
+        print(f"Error processing payment update: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 def checkInventory(items):
     # Send the order info to inventory microservice
@@ -165,7 +182,7 @@ def createOrder(orderItems):
                     "code": 500,
                     "message": "check order internal error",
                     "exception": ex_str,
-                }, 500
+            }, 500
     
 
 def updateInventory(orderItems):
@@ -176,7 +193,7 @@ def updateInventory(orderItems):
             item['Operation'] = "minus"
             update_result, http_status = invoke_http('http://localhost:5001/inventory/items/' + str(item['ItemID']), method='PUT', json=item)
 
-        return {"code": 200, "message": "successfully updated inventory"}, 200
+        return jsonify({"code": 200, "message": "successfully updated inventory"}), 200
 
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -184,11 +201,11 @@ def updateInventory(orderItems):
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
 
-        return {
+        return jsonify({
                     "code": 500,
                     "message": "check Inventory internal error",
                     "exception": ex_str,
-                }, 500
+                }), 500
     
 def makePayment(paymentDetails):
     print("Invoking payment microservice...")
@@ -208,7 +225,7 @@ def makePayment(paymentDetails):
                     "code": 500,
                     "message": "check Payment internal error",
                     "exception": ex_str,
-                }, 500
+            }, 500
 
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":

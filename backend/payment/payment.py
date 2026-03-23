@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from invokes import invoke_http
 import os
 import stripe
 
@@ -25,6 +26,11 @@ def create_intent():
         intent = stripe.PaymentIntent.create(
             amount=amt,
             currency=CURR,
+
+            metadata={
+                "CustomerID": cid,
+                "OrderID": oid,
+            },
 
             # allows Stripe to manage payment methods from your dashboard
             automatic_payment_methods= {
@@ -74,9 +80,25 @@ def stripe_webhook():
         return 'Invalid signature', 400
     
     if event['type'] == 'payment_intent.succeeded':
+
         payment_intent = event['data']['object']
+
+        metadata = payment_intent.get('metadata', {})
+        orderID = metadata.get('OrderID')
+        customerID = metadata.get('CustomerID')
+
+        payload = {
+            "OrderID": orderID,
+            "CustomerID": customerID,
+            "Amount": payment_intent['amount'],
+            "Payment Status": "success"
+        }
+
         print(f"Payment for {payment_intent['amount']} succeeded!")
-    
+        print(f"Sending orderID and customerID back to place order service...")
+        request_data, status = invoke_http('http://localhost:5006/placeorder/receive-payment-status', method='POST', json=payload)
+        print(f"{request_data}\nStatus: {status}")
+
     elif event['type'] == 'payment_intent.payment_failed':
         payment_intent = event['data']['object']
         print(f"Payment failed: {payment_intent['last_payment_error']['message']}")
