@@ -3,14 +3,40 @@ from flask_cors import CORS
 import json
 import pika
 import sys, os
+import amqp_lib
 from os import environ
-
 from invokes import invoke_http
 
 app = Flask(__name__)
 
 CORS(app)
 
+# RabbitMQ
+rabbit_host = environ.get("rabbit_host") or "localhost"
+rabbit_port = environ.get("rabbit_port") or 5672
+exchange_name = environ.get("exchange_name") or "order_topic"
+exchange_type = environ.get("exchange_type") or "topic"
+
+connection = None 
+channel = None
+
+def connectAMQP():
+    # Use global variables to reduce number of reconnection to RabbitMQ
+    # There are better ways but this suffices for our lab
+    global connection
+    global channel
+
+    print("Connecting to AMQP broker...")
+    try:
+        connection, channel = amqp_lib.connect(
+                hostname=rabbit_host,
+                port=rabbit_port,
+                exchange_name=exchange_name,
+                exchange_type=exchange_type,
+        )
+    except Exception as exception:
+        print(f"  Unable to connect to RabbitMQ.\n     {exception=}\n")
+        exit(1) # terminate
 
 @app.route("/placeorder", methods=["POST"])
 def place_order():
@@ -231,4 +257,5 @@ def makePayment(paymentDetails):
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
+    connectAMQP()
     app.run(host="0.0.0.0", port=5006, debug=True)

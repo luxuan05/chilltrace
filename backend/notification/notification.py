@@ -8,7 +8,7 @@ import requests
 import pymysql
 import pymysql.cursors
 
-rabbit_host   = "rabbitmq"
+rabbit_host   = "localhost"
 rabbit_port   = 5672
 exchange_name = "order_topic"
 exchange_type = "topic"

@@ -20,6 +20,10 @@ from telegram.ext import (
     ContextTypes,
 )
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env file into os.environ
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ── MySQL config (set these in your .env / docker-compose environment) ────────
@@ -148,6 +152,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ Something went wrong while linking your account. "
             "Please try again or contact support."
         )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Info
+# ─────────────────────────────────────────────────────────────────────────────
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /info - Display bot information
+    """
+    await update.message.reply_text(
+        "ℹ️ This bot links your Telegram account to your Buyer profile.\n\n"
+        "Commands:\n"
+        "  /start <buyerID> - Link your account\n"
+        "  /info - Show this message"
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Entrypoint
