@@ -35,7 +35,7 @@ def connectAMQP():
                 exchange_type=exchange_type,
         )
     except Exception as exception:
-        print(f"  Unable to connect to RabbitMQ.\n     {exception=}\n")
+        print(f"Unable to connect to RabbitMQ.\n     {exception=}\n")
         exit(1) # terminate
 
 @app.route("/placeorder", methods=["POST"])
@@ -145,6 +145,20 @@ def receivePayment():
 
         update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
         print(f"result: {update_result}\nStatus: {status}")
+
+        print("Publish message to AMQP Exchange for Notification")
+        message = {
+            "buyerID": customerID,
+            "subject": "Order " + str(orderID),
+            "body": "Your order has been received and payment was successful."
+        }
+
+        message_body = json.dumps(message)
+
+        channel.basic_publish(
+            exchange=exchange_name, routing_key='order.paid', body=message_body
+        )
+
         return jsonify(update_result), status
     
 
