@@ -26,8 +26,8 @@ services:
 
   notification:
     build:
-      context: ..
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile:  notification/Dockerfile
     depends_on:
       - rabbitmq
     environment:
