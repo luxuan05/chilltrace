@@ -21,6 +21,8 @@ def create_intent():
     # total amount should be in cents
     amt = request.json.get('Amount', None)
     orderItems = request.json.get('OrderItems', None)
+    scheduledDate = request.json.get('ScheduledDate', None)
+
     try:
         
         # create PaymentIntent with amount and currency (default USD)
@@ -31,7 +33,8 @@ def create_intent():
             metadata={
                 "CustomerID": cid,
                 "OrderID": oid,
-                'OrderItems': json.dumps(orderItems)
+                'OrderItems': json.dumps(orderItems),
+                'ScheduledDate': scheduledDate
             },
 
             # allows Stripe to manage payment methods from your dashboard
@@ -88,6 +91,7 @@ def stripe_webhook():
         metadata = payment_intent.get('metadata', {})
         orderID = metadata.get('OrderID')
         customerID = metadata.get('CustomerID')
+        scheduledDate = metadata.get('ScheduledDate')
         orderItems = json.loads(metadata.get('OrderItems'))
 
         payload = {
@@ -95,6 +99,7 @@ def stripe_webhook():
             "CustomerID": customerID,
             "Amount": payment_intent['amount'],
             'OrderItems': orderItems,
+            'ScheduledDate': scheduledDate,
             "Payment Status": "success"
         }
 
