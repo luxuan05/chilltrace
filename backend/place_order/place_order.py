@@ -156,15 +156,27 @@ def receivePayment():
         message_body = json.dumps(message)
 
         channel.basic_publish(
-            exchange=exchange_name, routing_key='order.paid', body=message_body
+            exchange=exchange_name, routing_key='order.paid', body=message_body,
+            properties=pika.BasicProperties(delivery_mode=2)
         )
 
         return jsonify(update_result), status
     
 
     except Exception as e:
-        print(f"Error processing payment update: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        # Unexpected error in code
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return jsonify(
+                {
+                    "code": 500,
+                    "message": "place_order.py internal error:",
+                    "exception": ex_str,
+                }
+        ), 500
 
 def checkInventory(items):
     # Send the order info to inventory microservice
