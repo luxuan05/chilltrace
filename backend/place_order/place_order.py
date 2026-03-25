@@ -81,7 +81,7 @@ def place_order():
             customerID = order_result['order']['CustomerID']
             orderID = order_result['order']['ID']
             payment_amount = int(order_result['order']['TotalPrice']*100)
-            
+            scheduledDate = order_result['order']['ScheduledDate']
 
             # Update inventory with new quantity for reach order item
             update_result, http_status = updateInventory(order['OrderItems'])
@@ -93,7 +93,8 @@ def place_order():
                 "CustomerID": customerID,
                 "OrderID": orderID,
                 "Amount": payment_amount,
-                "OrderItems": order_result['order']['OrderItems']
+                "OrderItems": order_result['order']['OrderItems'],
+                "ScheduledDate": scheduledDate
             }
             
             print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
@@ -139,6 +140,7 @@ def receivePayment():
         paymentStatus = data.get('Payment Status')
         orderItems = data.get('OrderItems')
         amount = int(data.get('Amount'))/100
+        scheduledDate = data.get('ScheduledDate')
 
         if not orderID or paymentStatus != 'success':
             return jsonify({'error': 'Invalid data or payment not successful'}), 400
@@ -157,7 +159,7 @@ def receivePayment():
             details = getItem(itemID)
             receipt+= f"\t{details['name']}\t${details['price']:.2f}\n"
 
-        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {"filler"}\nThank you!"
+        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nThank you!"
         
         print("Publish message to AMQP Exchange for Notification")
         message = {
