@@ -28,6 +28,7 @@ const RegisterPage = () => {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<UserRole | "">("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -38,8 +39,7 @@ const RegisterPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ── Validation ────────────────────────────────────────────────────────────
-    if (!name || !email || !role || !password || !confirmPassword) {
+    if (!name || !email || !phone || !role || !password || !confirmPassword) {
       toast({ title: "Please fill in all fields", variant: "destructive" });
       return;
     }
@@ -60,13 +60,12 @@ const RegisterPage = () => {
     try {
       const base = rolePortMap[role as UserRole];
 
-      // ── Build payload per role ────────────────────────────────────────────
       const payload =
         role === "buyer"
-          ? { CompanyName: companyName, Email: email, Password: password, Phone: "", Address: address }
+          ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
           : role === "supplier"
-          ? { CompanyName: companyName, Email: email, Password: password, Phone: "", Address: address }
-          : { Name: name, Email: email, Password: password, Phone: "", Address: address };
+          ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
+          : { Name: name, Email: email, Password: password, Phone: phone, Address: address };
 
       const res = await fetch(`${base}/${role}`, {
         method: "POST",
@@ -81,11 +80,10 @@ const RegisterPage = () => {
         return;
       }
 
-      // Auto login after registration
       const loginRes = await fetch(`${base}/${role}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Email: email, Password: password }),
+        body: JSON.stringify({ Email: email, Password: password, Phone: phone }),
       });
 
       const loginData = await loginRes.json();
@@ -149,6 +147,17 @@ const RegisterPage = () => {
               />
             </div>
             <div>
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+65 9123 4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
               <Label htmlFor="role">User Type</Label>
               <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
                 <SelectTrigger className="mt-1">
@@ -162,7 +171,6 @@ const RegisterPage = () => {
               </Select>
             </div>
 
-            {/* Extra fields for buyer and supplier */}
             {(role === "buyer" || role === "supplier") && (
               <>
                 <div>

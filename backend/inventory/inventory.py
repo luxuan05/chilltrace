@@ -9,12 +9,15 @@ from sqlalchemy.engine.url import make_url
 
 app = Flask(__name__)
 
+from flask_cors import CORS
+CORS(app)
+
 # Read from environment variables
 # DATABASE_URL = os.getenv('DATABASE_URL')
 # SSL_CA = os.getenv('SSL_CA')
 # PORT = int(os.getenv('PORT', 5000))
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=True)   # single call, force local .env
 
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip().strip('"').strip("'")
