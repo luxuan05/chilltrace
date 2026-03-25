@@ -228,15 +228,8 @@ def cancel_buyer_order(supplier_id, order_id):
             data = request.get_json()
             print(f"\nSupplier {supplier_id} cancelling order {order_id}...")
 
-                # Fetch intent_id from payment service using order_id
-            payment_result, http_status = getPaymentByOrder(order_id)
-            if http_status >= 400:
-                print(f"Warning: Could not fetch intent_id for order {order_id}: {payment_result}")
-                intent_id = ""
-            else:
-                intent_id = payment_result.get("IntentID", "")
-
-            result, http_status = cancelBuyerOrder(order_id, intent_id)
+                # intent_id is fetched internally by cancel_order service from Payment table
+            result, http_status = cancelBuyerOrder(order_id)
             if http_status >= 400:
                 return jsonify(result), http_status
 
@@ -395,33 +388,13 @@ def getOrdersBySupplier(supplier_id):
         return {"code": 500, "message": "getOrdersBySupplier internal error", "exception": ex_str}, 500
 
 
-def getPaymentByOrder(order_id):
-    print("Invoking payment microservice...")
-    try:
-        result, http_status = invoke_http(
-            'http://localhost:5004/payment/order/' + str(order_id),
-            method='GET',
-        )
-        if http_status >= 400:
-            return {"code": http_status, "message": "Get payment failed", "details": result}, http_status
-        return result, http_status
-    except Exception as e:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
-        print("Error: {}".format(ex_str))
-        return {"code": 500, "message": "getPaymentByOrder internal error", "exception": ex_str}, 500
-
-
-def cancelBuyerOrder(order_id, intent_id):
+def cancelBuyerOrder(order_id):
     print("Invoking cancel order composite service...")
     try:
         result, http_status = invoke_http(
             'http://localhost:5009/cancelorder/' + str(order_id),
             method='PUT',
-            json={
-                "intent_id": intent_id,
-            },
+            json={},
         )
         if http_status >= 400:
             return {"code": http_status, "message": "Cancel order failed", "details": result}, http_status
