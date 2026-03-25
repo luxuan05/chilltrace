@@ -8,12 +8,6 @@ import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
-const roles: { value: UserRole; label: string }[] = [
-  { value: "buyer", label: "Buyer" },
-  { value: "supplier", label: "Supplier" },
-  { value: "driver", label: "Driver" },
-];
-
 const rolePortMap: Record<UserRole, string> = {
   buyer:    "http://localhost:5012",
   supplier: "http://localhost:5011",
@@ -24,7 +18,6 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated, role } = useAuth();
   const { toast } = useToast();
-  const [selectedRole, setSelectedRole] = useState<UserRole>("buyer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -33,9 +26,9 @@ const LoginPage = () => {
     if (isAuthenticated && role) {
       navigate(`/${role}`, { replace: true });
     }
-  }, []); 
+  }, []);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast({ title: "Please fill in all fields", variant: "destructive" });
@@ -44,31 +37,25 @@ const LoginPage = () => {
 
     setIsLoading(true);
     try {
-      const base = rolePortMap[selectedRole];
-      const res = await fetch(`${base}/${selectedRole}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Email: email, Password: password }),
-      });
+      // Try each role until one succeeds
+      for (const [roleKey, base] of Object.entries(rolePortMap) as [UserRole, string][]) {
+        const res = await fetch(`${base}/${roleKey}/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ Email: email, Password: password }),
+        });
 
-      const data = await res.json();
-      console.log("1. Response status:", res.ok);
-      console.log("2. Response data:", data);
-
-      if (!res.ok) {
-        toast({ title: data.error || "Login failed", variant: "destructive" });
-        return;
+        if (res.ok) {
+          const data = await res.json();
+          login(data.user, roleKey);
+          toast({ title: `Welcome! Logged in as ${roleKey}` });
+          navigate(`/${roleKey}`);
+          return;
+        }
       }
 
-      console.log("3. Calling login...");
-      login(data.user, selectedRole);
-      console.log("4. Login called, isAuthenticated:", isAuthenticated);
-      
-      toast({ title: `Welcome! Logged in as ${selectedRole}` });
-      
-      console.log("5. About to navigate to:", `/${selectedRole}`);
-      navigate(`/${selectedRole}`);
-      console.log("6. Navigate called");
+      // None succeeded
+      toast({ title: "Invalid email or password", variant: "destructive" });
     } catch (err) {
       console.error("ERROR:", err);
       toast({ title: "Could not connect to server", variant: "destructive" });
@@ -99,24 +86,6 @@ const LoginPage = () => {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Role selector */}
-            <div className="flex rounded-lg border border-border bg-muted p-1 gap-1">
-              {roles.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setSelectedRole(value)}
-                  className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    selectedRole === value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
@@ -144,7 +113,7 @@ const LoginPage = () => {
               disabled={isLoading}
               className="w-full gradient-frost text-accent-foreground hover:opacity-90"
             >
-              {isLoading ? "Signing in..." : `Sign In as ${roles.find(r => r.value === selectedRole)?.label}`}
+              {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 

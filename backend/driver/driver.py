@@ -116,7 +116,7 @@ def create_driver():
             Phone     = phone,
             Address   = address,
             Email    = email,
-            Password_Hash = password_hash,
+            PasswordHash = password_hash,
         )
         db.session.add(driver)
         db.session.commit()

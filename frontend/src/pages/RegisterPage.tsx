@@ -34,6 +34,7 @@ const RegisterPage = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [address, setAddress] = useState("");
+  const [vehicleNo, setVehicleNo] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,6 +46,10 @@ const RegisterPage = () => {
     }
     if ((role === "buyer" || role === "supplier") && (!companyName || !address)) {
       toast({ title: "Company name and address are required", variant: "destructive" });
+      return;
+    }
+    if (role === "driver" && !vehicleNo) {
+      toast({ title: "Vehicle number is required", variant: "destructive" });
       return;
     }
     if (password.length < 6) {
@@ -65,7 +70,7 @@ const RegisterPage = () => {
           ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
           : role === "supplier"
           ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
-          : { Name: name, Email: email, Password: password, Phone: phone, Address: address };
+          : { Name: name, Email: email, Password: password, Phone: phone, Address: address, VehicleNo: vehicleNo };
 
       const res = await fetch(`${base}/${role}`, {
         method: "POST",
@@ -83,7 +88,7 @@ const RegisterPage = () => {
       const loginRes = await fetch(`${base}/${role}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Email: email, Password: password, Phone: phone }),
+        body: JSON.stringify({ Email: email, Password: password }),
       });
 
       const loginData = await loginRes.json();
@@ -159,7 +164,12 @@ const RegisterPage = () => {
             </div>
             <div>
               <Label htmlFor="role">User Type</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+              <Select value={role} onValueChange={(v) => {
+                setRole(v as UserRole);
+                setVehicleNo("");
+                setCompanyName("");
+                setAddress("");
+              }}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select your role" />
                 </SelectTrigger>
@@ -196,6 +206,20 @@ const RegisterPage = () => {
                   />
                 </div>
               </>
+            )}
+
+            {role === "driver" && (
+              <div>
+                <Label htmlFor="vehicleNo">Vehicle Number</Label>
+                <Input
+                  id="vehicleNo"
+                  type="text"
+                  placeholder="e.g. SBA1234A"
+                  value={vehicleNo}
+                  onChange={(e) => setVehicleNo(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
             )}
 
             <div>
