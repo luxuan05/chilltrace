@@ -21,10 +21,13 @@ def cancel_order(order_id):
             data = request.get_json()
             print("\nReceived cancel request for order:", order_id, data)
 
-            intent_id       = data.get("intent_id", "")
-            recipient_email = data.get("recipient_email", "")
-            customer_name   = data.get("customer_name", "Customer")
-
+            # Fetch intent_id from Payment table via payment service
+            payment_result, payment_status = getPaymentByOrder(order_id)
+            if payment_status >= 400:
+                print(f"Warning: Could not fetch intent_id for order {order_id}: {payment_result}")
+                intent_id = ""
+            else:
+                intent_id = payment_result.get("IntentID", "")
             #Cancel order
             cancel_result, http_status = cancelOrder(order_id)
 
@@ -33,9 +36,20 @@ def cancel_order(order_id):
 
             print("Successfully cancelled order")
 
-            order_data  = cancel_result.get("order", {})
-            order_items = order_data.get("OrderItems", [])
-            total_price = order_data.get("TotalPrice", 0)
+            order_data   = cancel_result.get("order", {})
+            order_items  = order_data.get("OrderItems", [])
+            total_price  = order_data.get("TotalPrice", 0)
+            customer_id  = order_data.get("CustomerID")
+
+            # Fetch buyer email and name from Buyer service
+            buyer_result, buyer_status = getBuyer(customer_id)
+            if buyer_status >= 400:
+                print(f"Warning: Could not fetch buyer for CustomerID {customer_id}: {buyer_result}")
+                recipient_email = ""
+                customer_name   = "Customer"
+            else:
+                recipient_email = buyer_result.get("Email")
+                customer_name   = buyer_result.get("CompanyName")
 
             #Release inventory
             release_result, http_status = releaseInventory(order_items)
@@ -107,6 +121,42 @@ def cancel_order(order_id):
         "code":    400,
         "message": "Invalid JSON input: " + str(request.get_data())
     }), 400
+
+def getPaymentByOrder(order_id):
+    print("Invoking payment microservice to get intent_id...")
+    try:
+        result, http_status = invoke_http(
+            'http://localhost:5004/payment/order/' + str(order_id),
+            method='GET',
+        )
+        if http_status >= 400:
+            return {"code": http_status, "message": "Get payment failed", "details": result}, http_status
+        return result, http_status
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+        return {"code": 500, "message": "getPaymentByOrder internal error", "exception": ex_str}, 500
+
+
+def getBuyer(customer_id):
+    print("Invoking buyer microservice...")
+    try:
+        result, http_status = invoke_http(
+            'http://localhost:5012/buyer/' + str(customer_id),
+            method='GET',
+        )
+        if http_status >= 400:
+            return {"code": http_status, "message": "Get buyer failed", "details": result}, http_status
+        return result, http_status
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+        return {"code": 500, "message": "getBuyer internal error", "exception": ex_str}, 500
+
 
 def cancelOrder(order_id):
     print("Invoking order microservice...")
@@ -192,16 +242,27 @@ def refundPayment(intent_id):
 def cancelDelivery(order_id):
     print("Invoking delivery microservice...")
     try:
+        delivery_base = 'https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI'
+
+        # GET existing delivery details to preserve driver and other fields
+        existing, http_status = invoke_http(
+            delivery_base + '/delivery/' + str(order_id) + '/',
+            method='GET',
+        )
+        if http_status >= 400:
+            return {"code": http_status, "message": "Get delivery failed", "details": existing}, http_status
+
+        # Use actual driver and fields from existing delivery record
         result, http_status = invoke_http(
-            'https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI/delivery/' + str(order_id) + '/',
+            delivery_base + '/delivery/' + str(order_id) + '/',
             method='PUT',
             json={
-                "address":            "",
-                "deliveryDate":       "2014-12-31",
+                "address":            existing.get("address"),
+                "deliveryDate":       existing.get("deliveryDate"),
                 "deliveryStatus":     "CANCELLED",
-                "driver":             0,
-                "initialTemperature": 0.1,
-                "finalTemperature":   0.1,
+                "driver":             existing.get("driver", 0),
+                "initialTemperature": existing.get("initialTemperature", 0.1),
+                "finalTemperature":   existing.get("finalTemperature", 0.1),
             },
         )
         if http_status >= 400:
