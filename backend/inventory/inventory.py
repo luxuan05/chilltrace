@@ -213,7 +213,7 @@ def check_availability(item_id):
 def reserve_stock():
     """Reserve stock for an order"""
     data = request.json
-    item = Item.query.get(data['item_id'])
+    item = Inventory.query.get(data['item_id'])
     
     if not item:
         return jsonify({'success': False, 'error': 'Item not found'}), 404
@@ -333,7 +333,7 @@ def cancel_reservation():
 def mark_item_spoiled(item_id):
     """Mark item as spoiled due to temperature breach"""
     data = request.json
-    item = Item.query.get_or_404(item_id)
+    item = Inventory.query.get_or_404(item_id)
     
     if item.status == 'SPOILED':
         return jsonify({'success': False, 'error': 'Item already spoiled', 'item': item.to_dict()}), 400
