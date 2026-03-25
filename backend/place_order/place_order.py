@@ -77,7 +77,7 @@ def place_order():
                 return jsonify(order_result), http_status
             
             print(f"Successfully created order")
-            
+            print(order_result)
             customerID = order_result['order']['CustomerID']
             orderID = order_result['order']['ID']
             payment_amount = int(order_result['order']['TotalPrice']*100)
@@ -92,7 +92,8 @@ def place_order():
             payment_details = {
                 "CustomerID": customerID,
                 "OrderID": orderID,
-                "Amount": payment_amount
+                "Amount": payment_amount,
+                "OrderItems": order_result['order']['OrderItems']
             }
             
             print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
@@ -136,21 +137,33 @@ def receivePayment():
         orderID = data.get('OrderID')
         customerID = data.get('CustomerID')
         paymentStatus = data.get('Payment Status')
+        orderItems = data.get('OrderItems')
+        amount = int(data.get('Amount'))/100
 
         if not orderID or paymentStatus != 'success':
             return jsonify({'error': 'Invalid data or payment not successful'}), 400
 
-
         print(f"Orchestrator received success message for Order ID: {orderID}")
 
+        # update order status to PAID
         update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
         print(f"result: {update_result}\nStatus: {status}")
 
+        # get datils for each item from inventory
+
+        receipt = "Your order has been received and payment was successful.\nOrder Items:\n" 
+        for item in orderItems:
+            itemID = item['ItemID']
+            details = getItem(itemID)
+            receipt+= f"\t{details['name']}\t${details['price']:.2f}\n"
+
+        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {"filler"}\nThank you!"
+        
         print("Publish message to AMQP Exchange for Notification")
         message = {
             "buyerID": customerID,
             "subject": "Order " + str(orderID),
-            "body": "Your order has been received and payment was successful."
+            "body": receipt
         }
 
         message_body = json.dumps(message)
@@ -277,6 +290,33 @@ def makePayment(paymentDetails):
         return {
                     "code": 500,
                     "message": "check Payment internal error",
+                    "exception": ex_str,
+            }, 500
+    
+
+def getItem(itemID):
+    print(f"Fetching info from Inventory for itemID: {itemID}")
+
+    try:
+
+        item, status = invoke_http('http://localhost:5001/inventory/items/' + str(itemID), method='GET')
+
+        if status != 200:
+            return {
+                "Message": "failed to retrieve item. Check if item exists"
+            }, status
+
+        return item
+        
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return {
+                    "code": 500,
+                    "message": "check Inventory internal error",
                     "exception": ex_str,
             }, 500
 

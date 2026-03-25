@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from invokes import invoke_http
 import os
 import stripe
+import json
 
 load_dotenv()
 app = Flask(__name__)
@@ -19,7 +20,7 @@ def create_intent():
     oid = request.json.get('OrderID', None)
     # total amount should be in cents
     amt = request.json.get('Amount', None)
-
+    orderItems = request.json.get('OrderItems', None)
     try:
         
         # create PaymentIntent with amount and currency (default USD)
@@ -30,6 +31,7 @@ def create_intent():
             metadata={
                 "CustomerID": cid,
                 "OrderID": oid,
+                'OrderItems': json.dumps(orderItems)
             },
 
             # allows Stripe to manage payment methods from your dashboard
@@ -86,11 +88,13 @@ def stripe_webhook():
         metadata = payment_intent.get('metadata', {})
         orderID = metadata.get('OrderID')
         customerID = metadata.get('CustomerID')
+        orderItems = json.loads(metadata.get('OrderItems'))
 
         payload = {
             "OrderID": orderID,
             "CustomerID": customerID,
             "Amount": payment_intent['amount'],
+            'OrderItems': orderItems,
             "Payment Status": "success"
         }
 

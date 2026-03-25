@@ -134,7 +134,7 @@ def get_items():
     items = query.all()
     return jsonify([item.to_dict() for item in items]), 200
 
-@app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
+@app.route('/inventory/items/<int:item_id>', methods=['GET'])
 def get_item(item_id):
     """Get single item by ID"""
     item = Inventory.query.get_or_404(item_id)
