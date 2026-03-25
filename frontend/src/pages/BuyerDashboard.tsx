@@ -288,8 +288,8 @@ const OrderHistory = () => {
 
 /* ─── Buyer Dashboard (Router) ─── */
 const BuyerDashboard = () => {
-  const { user } = useAuth();
-  if (!user || user.role !== "buyer") return <Navigate to="/login/buyer" />;
+  const { user, role } = useAuth();
+  if (!user || role !== "buyer") return <Navigate to="/login/buyer" />;
 
   return (
     <DashboardLayout navItems={navItems} title="Buyer Portal">

@@ -184,8 +184,8 @@ const MyDeliveries = () => {
 
 /* ─── Driver Dashboard ─── */
 const DriverDashboard = () => {
-  const { user } = useAuth();
-  if (!user || user.role !== "driver") return <Navigate to="/login/driver" />;
+  const { user, role } = useAuth();
+  if (!user || role !== "driver") return <Navigate to="/login/driver" />;
 
   return (
     <DashboardLayout navItems={navItems} title="Driver Portal">

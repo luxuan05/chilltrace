@@ -17,25 +17,26 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <AppDataProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login/:role" element={<LoginPage />} />
-              <Route path="/buyer/*" element={<BuyerDashboard />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/supplier/*" element={<SupplierDashboard />} />
-              <Route path="/driver/*" element={<DriverDashboard />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AppDataProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppDataProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/login/:role" element={<LoginPage />} />
+                <Route path="/buyer/*" element={<BuyerDashboard />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/supplier/*" element={<SupplierDashboard />} />
+                <Route path="/driver/*" element={<DriverDashboard />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+          </TooltipProvider>
+        </AppDataProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 

@@ -276,8 +276,8 @@ const SupplierOrders = () => {
 
 /* ─── Supplier Dashboard ─── */
 const SupplierDashboard = () => {
-  const { user } = useAuth();
-  if (!user || user.role !== "supplier") return <Navigate to="/login/supplier" />;
+  const { user, role } = useAuth();
+  if (!user || role !== "supplier") return <Navigate to="/login/supplier" />;
 
   return (
     <DashboardLayout navItems={navItems} title="Supplier Portal">
