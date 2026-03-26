@@ -82,6 +82,7 @@ def place_order():
             orderID = order_result['order']['ID']
             payment_amount = int(order_result['order']['TotalPrice']*100)
             scheduledDate = order_result['order']['ScheduledDate']
+            address = order['Address']
 
             # Update inventory with new quantity for reach order item
             update_result, http_status = updateInventory(order['OrderItems'])
@@ -94,7 +95,8 @@ def place_order():
                 "OrderID": orderID,
                 "Amount": payment_amount,
                 "OrderItems": order_result['order']['OrderItems'],
-                "ScheduledDate": scheduledDate
+                "ScheduledDate": scheduledDate,
+                "Address": address
             }
             
             print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
@@ -141,6 +143,7 @@ def receivePayment():
         orderItems = data.get('OrderItems')
         amount = int(data.get('Amount'))/100
         scheduledDate = data.get('ScheduledDate')
+        address = data.get('Address')
 
         if not orderID or paymentStatus != 'success':
             return jsonify({'error': 'Invalid data or payment not successful'}), 400
@@ -159,23 +162,39 @@ def receivePayment():
             details = getItem(itemID)
             receipt+= f"\t{details['name']}\t${details['price']:.2f}\n"
 
-        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nThank you!"
+        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nDelivery Address: {address}\nThank you!"
         
         print("Publish message to AMQP Exchange for Notification")
-        message = {
-            "buyerID": customerID,
-            "subject": "Order " + str(orderID),
-            "body": receipt
+        # message = {
+        #     "buyerID": customerID,
+        #     "subject": "Order " + str(orderID),
+        #     "body": receipt
+        # }
+
+        # message_body = json.dumps(message)
+
+        # channel.basic_publish(
+        #     exchange=exchange_name, routing_key='order.paid', body=message_body,
+        #     properties=pika.BasicProperties(delivery_mode=2)
+        # )
+
+        delivery_json = {
+            "orderId": orderID,
+            "customerId": customerID,
+            "address": address,
+            "deliveryDate": scheduledDate
         }
 
-        message_body = json.dumps(message)
+        print("Invoking delivery service to create delivery job")
 
-        channel.basic_publish(
-            exchange=exchange_name, routing_key='order.paid', body=message_body,
-            properties=pika.BasicProperties(delivery_mode=2)
-        )
-
-        return jsonify(update_result), status
+        delivery_result, http_status = invoke_http('https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI/delivery', method='POST', json=delivery_json)
+        
+        if http_status != 201:
+            return jsonify({
+                "Error": "Failed to create delivery job"
+            }), 500
+    
+        return jsonify({"code": 200, "Message": "Successfully placed order!"}), 200
     
 
     except Exception as e:

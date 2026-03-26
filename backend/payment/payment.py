@@ -62,6 +62,7 @@ def create_intent():
     amt = request.json.get('Amount', None)
     orderItems = request.json.get('OrderItems', None)
     scheduledDate = request.json.get('ScheduledDate', None)
+    address = request.json.get('Address', None)
 
     try:
         
@@ -73,8 +74,9 @@ def create_intent():
             metadata={
                 "CustomerID": cid,
                 "OrderID": oid,
-                'OrderItems': json.dumps(orderItems),
-                'ScheduledDate': scheduledDate
+                "OrderItems": json.dumps(orderItems),
+                "ScheduledDate": scheduledDate,
+                "Address": address
             },
 
             # allows Stripe to manage payment methods from your dashboard
@@ -142,14 +144,16 @@ def stripe_webhook():
         orderID = metadata.get('OrderID')
         customerID = metadata.get('CustomerID')
         scheduledDate = metadata.get('ScheduledDate')
+        address = metadata.get('Address')
         orderItems = json.loads(metadata.get('OrderItems'))
 
         payload = {
             "OrderID": orderID,
             "CustomerID": customerID,
             "Amount": payment_intent['amount'],
-            'OrderItems': orderItems,
-            'ScheduledDate': scheduledDate,
+            "OrderItems": orderItems,
+            "ScheduledDate": scheduledDate,
+            "Address": address,
             "Payment Status": "success"
         }
 
