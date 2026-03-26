@@ -7,7 +7,7 @@ channel = connection.channel()
 message = {
     "buyerID": 1,
     "subject": "Order Confirmed",
-    "body": "Your order #1001 has been confirmed and is being processed."
+    "body": "Your order #1005 has been confirmed and is being processed."
 }
 
 channel.basic_publish(

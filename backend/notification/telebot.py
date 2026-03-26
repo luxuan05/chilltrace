@@ -195,7 +195,7 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Commands:\n"
         "  /start - Link your account\n"
         "  /info - Show this message\n"
-        "  /cancel - leave the bot"
+        "  /cancel - Cancel current conversation"
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
