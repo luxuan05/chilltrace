@@ -7,8 +7,10 @@ import amqp_lib
 import requests
 import pymysql
 import pymysql.cursors
+
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file into os.environ
+
 rabbit_host   = "localhost"
 rabbit_port   = 5672
 exchange_name = "order_topic"
