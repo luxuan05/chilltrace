@@ -24,6 +24,10 @@ from telegram.ext import (
     filters,
 )
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env file into os.environ
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # ── MySQL config ──────────────────────────────────────────────────────────────
@@ -180,17 +184,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# /info handler (for debugging)
+# Info
 # ─────────────────────────────────────────────────────────────────────────────
-
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows current chat ID for debugging."""
-    chat_id = update.effective_chat.id
-    await update.message.reply_text(f"Your Chat ID: `{chat_id}`", parse_mode="Markdown")
-
+    """
+    /info - Display bot information
+    """
+    await update.message.reply_text(
+        "ℹ️ This bot links your Telegram account to your Buyer profile.\n\n"
+        "Commands:\n"
+        "  /start - Link your account\n"
+        "  /info - Show this message\n"
+        "  /cancel - leave the bot"
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Entrypoint — manually manage lifecycle to avoid Python 3.14 event loop issue
+# Entrypoint
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def main():

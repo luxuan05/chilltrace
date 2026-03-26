@@ -9,12 +9,15 @@ from sqlalchemy.engine.url import make_url
 
 app = Flask(__name__)
 
+from flask_cors import CORS
+CORS(app)
+
 # Read from environment variables
 # DATABASE_URL = os.getenv('DATABASE_URL')
 # SSL_CA = os.getenv('SSL_CA')
 # PORT = int(os.getenv('PORT', 5000))
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=True)   # single call, force local .env
 
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip().strip('"').strip("'")
@@ -134,7 +137,7 @@ def get_items():
     items = query.all()
     return jsonify([item.to_dict() for item in items]), 200
 
-@app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
+@app.route('/inventory/items/<int:item_id>', methods=['GET'])
 def get_item(item_id):
     """Get single item by ID"""
     item = Inventory.query.get_or_404(item_id)
@@ -154,29 +157,34 @@ def create_item():
         Description=data.get('description'),
         MinTemperature=data.get('min_temperature'),
         MaxTemperature=data.get('max_temperature'),
-        qty_reserved=0,
-        status='AVAILABLE'
     )
     db.session.add(item)
     db.session.commit()
     return jsonify(item.to_dict()), 201
 
-@app.route('/inventory/items/<int:item_id>', methods=['PUT'])
+@app.route('/api/inventory/items/<int:item_id>', methods=['PUT'])
 def update_item(item_id):
     """Update item"""
     item = Inventory.query.get_or_404(item_id)
     data = request.json
-    
-    if 'Quantity' in data:
-        if 'Operation' in data and data['Operation'] == 'minus':
-            item.Qty -= data['Quantity']
-    if 'Price' in data:
-        item.Price = data['price']
-    if 'status' in data:
-        item.status = data['status']
+
     if 'name' in data:
         item.Name = data['name']
-    
+    if 'category' in data:
+        item.Category = data['category']
+    if 'unit' in data:
+        item.Unit = data['unit']
+    if 'price' in data:
+        item.Price = data['price']
+    if 'quantity' in data:
+        item.Qty = data['quantity']
+    if 'min_temperature' in data:
+        item.MinTemperature = data['min_temperature']
+    if 'max_temperature' in data:
+        item.MaxTemperature = data['max_temperature']
+    if 'description' in data:
+        item.Description = data['description']
+
     db.session.commit()
     return jsonify(item.to_dict()), 200
 
@@ -213,7 +221,7 @@ def check_availability(item_id):
 def reserve_stock():
     """Reserve stock for an order"""
     data = request.json
-    item = Item.query.get(data['item_id'])
+    item = Inventory.query.get(data['item_id'])
     
     if not item:
         return jsonify({'success': False, 'error': 'Item not found'}), 404
@@ -333,7 +341,7 @@ def cancel_reservation():
 def mark_item_spoiled(item_id):
     """Mark item as spoiled due to temperature breach"""
     data = request.json
-    item = Item.query.get_or_404(item_id)
+    item = Inventory.query.get_or_404(item_id)
     
     if item.status == 'SPOILED':
         return jsonify({'success': False, 'error': 'Item already spoiled', 'item': item.to_dict()}), 400
