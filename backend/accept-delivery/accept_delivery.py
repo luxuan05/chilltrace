@@ -1,12 +1,13 @@
 import json
 import os
-from datetime import datetime, timezone
 
-import pika
-import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+from clients.delivery_client import get_delivery, update_delivery
+from clients.order_client import get_order, update_order_status
+from clients.notification_client import publish_delivery_accepted
 
 load_dotenv()
 
@@ -27,144 +28,11 @@ DELIVERY_ACCEPTABLE_CURRENT_STATUSES = {
     if s.strip()
 }
 
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
-RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
-RABBITMQ_EXCHANGE = os.getenv("RABBITMQ_EXCHANGE", "notification.exchange")
-RABBITMQ_ROUTING_KEY = os.getenv(
-    "RABBITMQ_ROUTING_KEY", "notification.delivery.accepted"
-)
-
-HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", 30))
-PORT = int(os.getenv("PORT", 5009))
-
 
 # ---- App --------------------------------------------------------------------
 
 app = Flask(__name__)
 CORS(app)
-
-
-# ---- Helpers ----------------------------------------------------------------
-
-def _upstream_error(service_name, response):
-    return RuntimeError(
-        f"{service_name} error {response.status_code}: {response.text}"
-    )
-
-
-def get_delivery(order_id):
-    """
-    Fetch delivery record by order ID from delivery service.
-    Expected payload includes field deliveryStatus.
-    """
-    url = f"{DELIVERY_SERVICE_URL}/delivery/{order_id}/"
-    response = requests.get(url, timeout=HTTP_TIMEOUT)
-
-    if response.status_code == 404:
-        raise ValueError(f"Delivery for order {order_id} not found.")
-    if not response.ok:
-        raise _upstream_error("Delivery service", response)
-
-    return response.json()
-
-# tbc - to change with delivery instead of order
-def ensure_order_exists(order_id):
-    """Read order to verify it exists before attempting status update."""
-    url = f"{ORDER_SERVICE_URL}/orders/{order_id}"
-    response = requests.get(url, timeout=HTTP_TIMEOUT)
-
-    if response.status_code == 404:
-        raise ValueError(f"Order {order_id} not found.")
-    if not response.ok:
-        raise _upstream_error("Order service", response)
-
-    return response.json()
-
-# tbc - to change with delivery instead of order
-def update_order_status(order_id, status):
-    """Update order status in order-service."""
-    url = f"{ORDER_SERVICE_URL}/orders/{order_id}/status"
-    response = requests.put(url, json={"OrderStatus": status}, timeout=HTTP_TIMEOUT)
-
-    if response.status_code == 404:
-        raise ValueError(f"Order {order_id} not found.")
-    if response.status_code == 400:
-        raise ValueError(
-            f"Order status '{status}' is not accepted by order-service."
-        )
-    if not response.ok:
-        raise _upstream_error("Order service", response)
-
-    return response.json()
-
-
-def assign_driver_to_delivery(order_id, delivery, driver_id, delivery_status):
-    """
-    Assign driver to the external delivery job (DeliveryAPI).
-
-    We preserve existing delivery fields and only update:
-    - deliveryStatus
-    - driver
-    """
-    url = f"{DELIVERY_SERVICE_URL}/delivery/{order_id}/"
-    response = requests.put(
-        url,
-        json={
-            "address": delivery.get("address", ""),
-            "deliveryDate": delivery.get("deliveryDate", ""),
-            "deliveryStatus": delivery_status,
-            "driver": driver_id,
-            "initialTemperature": delivery.get("initialTemperature", 0.1),
-            "finalTemperature": delivery.get("finalTemperature", 0.1),
-        },
-        timeout=HTTP_TIMEOUT,
-    )
-
-    if response.status_code == 404:
-        raise ValueError(f"Delivery for order {order_id} not found.")
-    if not response.ok:
-        raise _upstream_error("Delivery service", response)
-
-    return response.json()
-
-
-def publish_notification(event_type, payload):
-    """Publish event to RabbitMQ for downstream notification processing."""
-    message = {
-        "event_type": event_type,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        **payload,
-    }
-
-    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
-    params = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        port=RABBITMQ_PORT,
-        credentials=credentials,
-        heartbeat=30,
-    )
-
-    connection = pika.BlockingConnection(params)
-    try:
-        channel = connection.channel()
-        channel.exchange_declare(
-            exchange=RABBITMQ_EXCHANGE,
-            exchange_type="topic",
-            durable=True,
-        )
-        channel.basic_publish(
-            exchange=RABBITMQ_EXCHANGE,
-            routing_key=RABBITMQ_ROUTING_KEY,
-            body=json.dumps(message),
-            properties=pika.BasicProperties(
-                delivery_mode=2,
-                content_type="application/json",
-            ),
-        )
-    finally:
-        connection.close()
 
 
 # ---- Routes -----------------------------------------------------------------
@@ -237,15 +105,20 @@ def accept_delivery(order_id):
             ), 409
 
         # Read order to verify it exists and to derive CustomerID for notifications.
-        order = ensure_order_exists(order_id)
+        order = get_order(order_id)
         customer_id = order.get("CustomerID") or order.get("CustomerId") or order.get("customer_id")
 
         # Assign driver + advance delivery state in the external DeliveryAPI.
-        assign_result = assign_driver_to_delivery(
-            order_id=order_id,
-            delivery=delivery,
-            driver_id=driver_id,
-            delivery_status=DELIVERY_STATUS_ON_ACCEPT,
+        assign_result = update_delivery(
+            order_id,
+            {
+                "address": delivery.get("address", ""),
+                "deliveryDate": delivery.get("deliveryDate", ""),
+                "deliveryStatus": DELIVERY_STATUS_ON_ACCEPT,
+                "driver": driver_id,
+                "initialTemperature": delivery.get("initialTemperature", 0.1),
+                "finalTemperature": delivery.get("finalTemperature", 0.1),
+            },
         )
 
         # Update your local order state so other parts of the system know the driver has taken over.
@@ -253,17 +126,11 @@ def accept_delivery(order_id):
 
         notification_sent = False
         if customer_id is not None:
-            publish_notification(
-                "DELIVERY_ACCEPTED",
-                {
-                    "buyerID": customer_id,
-                    "subject": subject,
-                    "body": body,
-                    "order_id": order_id,
-                    "accepted_by": accepted_by,
-                    "delivery_status": current_delivery_status,
-                    "order_status": ORDER_STATUS_ON_ACCEPT,
-                },
+            publish_delivery_accepted(
+                order_id=order_id,
+                customer_id=customer_id,
+                driver_id=driver_id,
+                note=note
             )
             notification_sent = True
 
