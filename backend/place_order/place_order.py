@@ -165,18 +165,18 @@ def receivePayment():
         receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nDelivery Address: {address}\nThank you!"
         
         print("Publish message to AMQP Exchange for Notification")
-        # message = {
-        #     "buyerID": customerID,
-        #     "subject": "Order " + str(orderID),
-        #     "body": receipt
-        # }
+        message = {
+            "buyerID": customerID,
+            "subject": "Order " + str(orderID),
+            "body": receipt
+        }
 
-        # message_body = json.dumps(message)
+        message_body = json.dumps(message)
 
-        # channel.basic_publish(
-        #     exchange=exchange_name, routing_key='order.paid', body=message_body,
-        #     properties=pika.BasicProperties(delivery_mode=2)
-        # )
+        channel.basic_publish(
+            exchange=exchange_name, routing_key='order.paid', body=message_body,
+            properties=pika.BasicProperties(delivery_mode=2)
+        )
 
         delivery_json = {
             "orderId": orderID,
@@ -344,5 +344,5 @@ def getItem(itemID):
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
-    # connectAMQP()
+    connectAMQP()
     app.run(host="0.0.0.0", port=5006, debug=True)
