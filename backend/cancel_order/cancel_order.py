@@ -22,12 +22,13 @@ def cancel_order(order_id):
             print("\nReceived cancel request for order:", order_id, data)
 
             # Fetch intent_id from Payment table via payment service
+            # payment service returns plain string (not JSON)
             payment_result, payment_status = getPaymentByOrder(order_id)
-            if payment_status >= 400:
-                print(f"Warning: Could not fetch intent_id for order {order_id}: {payment_result}")
+            if payment_status >= 400 or not payment_result:
+                print(f"Warning: Could not fetch intent_id for order {order_id}")
                 intent_id = ""
             else:
-                intent_id = payment_result.get("IntentID", "")
+                intent_id = payment_result
             #Cancel order
             cancel_result, http_status = cancelOrder(order_id)
 
@@ -48,8 +49,8 @@ def cancel_order(order_id):
                 recipient_email = ""
                 customer_name   = "Customer"
             else:
-                recipient_email = buyer_result.get("Email")
-                customer_name   = buyer_result.get("CompanyName")
+                recipient_email = buyer_result.get("Email", "")
+                customer_name   = buyer_result.get("CompanyName", "Customer")
 
             #Release inventory
             release_result, http_status = releaseInventory(order_items)
@@ -125,19 +126,18 @@ def cancel_order(order_id):
 def getPaymentByOrder(order_id):
     print("Invoking payment microservice to get intent_id...")
     try:
-        result, http_status = invoke_http(
-            'http://localhost:5004/payment/order/' + str(order_id),
-            method='GET',
-        )
-        if http_status >= 400:
-            return {"code": http_status, "message": "Get payment failed", "details": result}, http_status
-        return result, http_status
+        import requests as req
+        response = req.get('http://localhost:5004/payment/order/' + str(order_id), timeout=10)
+        if response.status_code >= 400:
+            return None, response.status_code
+        # payment service returns plain string (not JSON)
+        return response.text.strip(), response.status_code
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
-        return {"code": 500, "message": "getPaymentByOrder internal error", "exception": ex_str}, 500
+        return None, 500
 
 
 def getBuyer(customer_id):
@@ -200,9 +200,9 @@ def releaseInventory(order_items):
 
             # PUT new absolute qty back
             update_result, http_status = invoke_http(
-                'http://localhost:5001/inventory/items/' + str(item_id),
+                'http://localhost:5001/api/inventory/items/' + str(item_id),
                 method='PUT',
-                json={"Qty": new_qty},
+                json={"quantity": new_qty},
             )
             if http_status >= 400:
                 return {"code": http_status, "message": "Failed to release item " + str(item_id), "details": update_result}, http_status
@@ -257,8 +257,8 @@ def cancelDelivery(order_id):
             delivery_base + '/delivery/' + str(order_id) + '/',
             method='PUT',
             json={
-                "address":            existing.get("address"),
-                "deliveryDate":       existing.get("deliveryDate"),
+                "address":            existing.get("address", ""),
+                "deliveryDate":       existing.get("deliveryDate", "2014-12-31"),
                 "deliveryStatus":     "CANCELLED",
                 "driver":             existing.get("driver", 0),
                 "initialTemperature": existing.get("initialTemperature", 0.1),

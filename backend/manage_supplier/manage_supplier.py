@@ -223,31 +223,27 @@ def cancel_buyer_order(supplier_id, order_id):
     Buyer email and name are fetched automatically by the cancel order service.
     No request body needed.
     """
-    if request.is_json:
-        try:
-            data = request.get_json()
-            print(f"\nSupplier {supplier_id} cancelling order {order_id}...")
+    try:
+        print(f"\nSupplier {supplier_id} cancelling order {order_id}...")
 
-                # intent_id is fetched internally by cancel_order service from Payment table
-            result, http_status = cancelBuyerOrder(order_id)
-            if http_status >= 400:
-                return jsonify(result), http_status
+        # intent_id is fetched internally by cancel_order service from Payment table
+        result, http_status = cancelBuyerOrder(order_id)
+        if http_status >= 400:
+            return jsonify(result), http_status
 
-            print(f"Successfully cancelled order {order_id}")
-            return jsonify({
-                "code":    200,
-                "message": f"Order {order_id} cancelled successfully",
-                "result":  result,
-            }), 200
+        print(f"Successfully cancelled order {order_id}")
+        return jsonify({
+            "code":    200,
+            "message": f"Order {order_id} cancelled successfully",
+            "result":  result,
+        }), 200
 
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
-            print("Error: {}".format(ex_str))
-            return jsonify({"code": 500, "message": "manage_supplier.py internal error:", "exception": ex_str}), 500
-
-    return jsonify({"code": 400, "message": "Invalid JSON input: " + str(request.get_data())}), 400
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+        return jsonify({"code": 500, "message": "manage_supplier.py internal error:", "exception": ex_str}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,7 +332,7 @@ def getInventoryItem(item_id):
     print("Invoking inventory microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5001/api/inventory/items/' + str(item_id),
+            'http://localhost:5001/inventory/items/' + str(item_id),
             method='GET',
         )
         if http_status >= 400:
@@ -354,7 +350,7 @@ def updateInventoryItem(item_id, data):
     print("Invoking inventory microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5001/inventory/items/' + str(item_id),
+            'http://localhost:5001/api/inventory/items/' + str(item_id),
             method='PUT',
             json=data,
         )
