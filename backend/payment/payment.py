@@ -221,7 +221,7 @@ def getIntentID(order_id):
         if not intent_id:
             return jsonify({"error": "Order ID not found."}), 404
         intent_id = intent_id.to_dict()
-        return intent_id['IntentID']
+        return jsonify({"IntentID": intent_id['IntentID']}), 200
     
 
     except Exception as e:
