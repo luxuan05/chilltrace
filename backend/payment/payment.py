@@ -7,7 +7,10 @@ import os
 import stripe
 import json
 import sys
-load_dotenv()
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
 
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
