@@ -31,6 +31,6 @@ services:
     depends_on:
       - rabbitmq
     env_file:
-      - .env
+      - ../.env
     networks:
       - esd-net
