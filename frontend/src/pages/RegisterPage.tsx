@@ -14,19 +14,42 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+
+const rolePortMap: Record<UserRole, string> = {
+  buyer:    "http://localhost:5012",
+  supplier: "http://localhost:5011",
+  driver:   "http://localhost:5013",
+};
+
 const RegisterPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { toast } = useToast();
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<UserRole | "">("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const handleSubmit = (e: React.FormEvent) => {
+  const [companyName, setCompanyName] = useState("");
+  const [address, setAddress] = useState("");
+  const [vehicleNo, setVehicleNo] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !role || !password || !confirmPassword) {
+
+    if (!name || !email || !phone || !role || !password || !confirmPassword) {
       toast({ title: "Please fill in all fields", variant: "destructive" });
+      return;
+    }
+    if ((role === "buyer" || role === "supplier") && (!companyName || !address)) {
+      toast({ title: "Company name and address are required", variant: "destructive" });
+      return;
+    }
+    if (role === "driver" && !vehicleNo) {
+      toast({ title: "Vehicle number is required", variant: "destructive" });
       return;
     }
     if (password.length < 6) {
@@ -37,15 +60,55 @@ const RegisterPage = () => {
       toast({ title: "Passwords do not match", variant: "destructive" });
       return;
     }
-    // Mock registration – log in directly
-    const success = login(email, password, role as UserRole);
-    if (success) {
+
+    setIsLoading(true);
+    try {
+      const base = rolePortMap[role as UserRole];
+
+      const payload =
+        role === "buyer"
+          ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
+          : role === "supplier"
+          ? { CompanyName: companyName, Email: email, Password: password, Phone: phone, Address: address }
+          : { Name: name, Email: email, Password: password, Phone: phone, Address: address, VehicleNo: vehicleNo };
+
+      const res = await fetch(`${base}/${role}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({ title: data.error || "Registration failed", variant: "destructive" });
+        return;
+      }
+
+      const loginRes = await fetch(`${base}/${role}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Email: email, Password: password }),
+      });
+
+      const loginData = await loginRes.json();
+      if (!loginRes.ok) {
+        toast({ title: "Registered! Please sign in.", variant: "default" });
+        navigate("/login");
+        return;
+      }
+
+      login(loginData.user, role as UserRole);
       toast({ title: `Account created! Welcome, ${name}` });
       navigate(`/${role}`);
-    } else {
-      toast({ title: "Registration failed", variant: "destructive" });
+
+    } catch {
+      toast({ title: "Could not connect to server", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
   };
+
   return (
     <div className="min-h-screen gradient-ice flex items-center justify-center px-6">
       <div className="w-full max-w-md animate-fade-in">
@@ -55,17 +118,16 @@ const RegisterPage = () => {
         >
           <ArrowLeft className="h-4 w-4" /> Back to home
         </button>
+
         <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
           <div className="flex items-center gap-2 mb-6">
             <Snowflake className="h-6 w-6 text-accent" />
             <span className="font-semibold text-foreground">ChillTrace</span>
           </div>
-          <h1 className="text-2xl font-bold text-foreground mb-1">
-            Create an account
-          </h1>
-          <p className="text-sm text-muted-foreground mb-6">
-            Fill in your details to get started
-          </p>
+
+          <h1 className="text-2xl font-bold text-foreground mb-1">Create an account</h1>
+          <p className="text-sm text-muted-foreground mb-6">Fill in your details to get started</p>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="name">Full Name</Label>
@@ -90,8 +152,24 @@ const RegisterPage = () => {
               />
             </div>
             <div>
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+65 9123 4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
               <Label htmlFor="role">User Type</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+              <Select value={role} onValueChange={(v) => {
+                setRole(v as UserRole);
+                setVehicleNo("");
+                setCompanyName("");
+                setAddress("");
+              }}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Select your role" />
                 </SelectTrigger>
@@ -102,6 +180,48 @@ const RegisterPage = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {(role === "buyer" || role === "supplier") && (
+              <>
+                <div>
+                  <Label htmlFor="companyName">Company Name</Label>
+                  <Input
+                    id="companyName"
+                    type="text"
+                    placeholder="Your company name"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    type="text"
+                    placeholder="123 Street, City"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </>
+            )}
+
+            {role === "driver" && (
+              <div>
+                <Label htmlFor="vehicleNo">Vehicle Number</Label>
+                <Input
+                  id="vehicleNo"
+                  type="text"
+                  placeholder="e.g. SBA1234A"
+                  value={vehicleNo}
+                  onChange={(e) => setVehicleNo(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            )}
+
             <div>
               <Label htmlFor="password">Password</Label>
               <Input
@@ -124,14 +244,20 @@ const RegisterPage = () => {
                 className="mt-1"
               />
             </div>
-            <Button type="submit" className="w-full gradient-frost text-accent-foreground hover:opacity-90">
-              Create Account
+
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full gradient-frost text-accent-foreground hover:opacity-90"
+            >
+              {isLoading ? "Creating account..." : "Create Account"}
             </Button>
           </form>
+
           <p className="text-sm text-muted-foreground mt-4 text-center">
             Already have an account?{" "}
             <button
-              onClick={() => navigate("/login/buyer")}
+              onClick={() => navigate("/login")}
               className="text-accent hover:underline font-medium"
             >
               Sign in
@@ -142,4 +268,5 @@ const RegisterPage = () => {
     </div>
   );
 };
+
 export default RegisterPage;

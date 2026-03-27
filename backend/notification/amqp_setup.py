@@ -14,7 +14,6 @@ exchange_name = "order_topic"
 exchange_type = "topic"
 
 queues = [
-    {"name": "Error", "routing_key": "*.error"},
     {"name": "Activity_Log", "routing_key": "#"},
 ]
 

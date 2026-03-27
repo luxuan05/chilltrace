@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import bcrypt
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
@@ -32,6 +33,12 @@ class Config:
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+from flask_cors import CORS
+
+app = Flask(__name__)
+app.config.from_object(Config)
+CORS(app) 
 
 db = SQLAlchemy()
 db.init_app(app)
@@ -86,7 +93,7 @@ def create_buyer():
 
         company_name  = data.get("CompanyName")
         phone         = data.get("Phone")
-        password_hash = data.get("PasswordHash")
+        password      = data.get("Password")
         address       = data.get("Address")
         email         = data.get("Email")
         chat_id       = data.get("ChatID")
@@ -95,11 +102,13 @@ def create_buyer():
             return jsonify({"error": "CompanyName is required"}), 400
         if not email:
             return jsonify({"error": "Email is required"}), 400
-        if not password_hash:
-            return jsonify({"error": "PasswordHash is required"}), 400
+        if not password:
+            return jsonify({"error": "Password is required"}), 400
 
         if Buyer.query.filter_by(Email=email).first():
             return jsonify({"error": "Email already registered"}), 409
+        
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         buyer = Buyer(
             CompanyName  = company_name,
@@ -168,6 +177,30 @@ def update_buyer(buyer_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to update buyer", "details": str(e)}), 500
+    
+
+@app.route("/buyer/login", methods=["POST"])
+def login_buyer():
+    try:
+        data = request.get_json()
+        email    = data.get("Email")
+        password = data.get("Password")
+
+        if not email or not password:
+            return jsonify({"error": "Email and Password are required"}), 400
+
+        buyer = Buyer.query.filter_by(Email=email).first()
+        if not buyer:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        import bcrypt
+        if not bcrypt.checkpw(password.encode("utf-8"), buyer.PasswordHash.encode("utf-8")):
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        return jsonify({"message": "Login successful", "role": "buyer", "user": buyer.to_dict()}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Login failed", "details": str(e)}), 500
 
 
 if __name__ == "__main__":

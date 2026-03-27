@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import bcrypt
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
@@ -34,6 +35,12 @@ class Config:
 app = Flask(__name__)
 app.config.from_object(Config)
 
+from flask_cors import CORS
+
+app = Flask(__name__)
+app.config.from_object(Config)
+CORS(app) 
+
 db = SQLAlchemy()
 db.init_app(app)
 
@@ -48,6 +55,7 @@ class Supplier(db.Model):
     Phone        = db.Column(db.String(50), nullable=True)
     PasswordHash = db.Column(db.String(255), nullable=False)
     Address      = db.Column(db.String(255), nullable=True)
+    Email        = db.Column(db.String(255), nullable=True, unique=True)
 
     def to_dict(self):
         return {
@@ -55,6 +63,7 @@ class Supplier(db.Model):
             "CompanyName": self.CompanyName,
             "Phone":       self.Phone,
             "Address":     self.Address,
+            "Email":       self.Email,
         }
 
 
@@ -83,19 +92,30 @@ def create_supplier():
 
         company_name  = data.get("CompanyName")
         phone         = data.get("Phone")
-        password_hash = data.get("PasswordHash")
+        password      = data.get("Password")
         address       = data.get("Address")
+        email         = data.get("Email")
 
         if not company_name:
             return jsonify({"error": "CompanyName is required"}), 400
-        if not password_hash:
-            return jsonify({"error": "PasswordHash is required"}), 400
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+        if not password:
+            return jsonify({"error": "Password is required"}), 400
+        if not address:
+            return jsonify({"error": "Address is required"}), 400
+        
+        if Supplier.query.filter_by(Email=email).first():
+            return jsonify({"error": "Email already registered"}), 409
+        
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         supplier = Supplier(
             CompanyName  = company_name,
             Phone        = phone,
             PasswordHash = password_hash,
             Address      = address,
+            Email        = email,
         )
         db.session.add(supplier)
         db.session.commit()
@@ -152,7 +172,29 @@ def update_supplier(supplier_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to update supplier", "details": str(e)}), 500
+    
+@app.route("/supplier/login", methods=["POST"])
+def login_supplier():
+    try:
+        data = request.get_json()
+        email    = data.get("Email")
+        password = data.get("Password")
 
+        if not email or not password:
+            return jsonify({"error": "Email and Password are required"}), 400
+
+        supplier = Supplier.query.filter_by(Email=email).first()
+        if not supplier:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        import bcrypt
+        if not bcrypt.checkpw(password.encode("utf-8"), supplier.PasswordHash.encode("utf-8")):
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        return jsonify({"message": "Login successful", "role": "supplier", "user": supplier.to_dict()}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Login failed", "details": str(e)}), 500
 
 if __name__ == "__main__":
     print("This flask is for " + os.path.basename(__file__) + ": supplier service...")

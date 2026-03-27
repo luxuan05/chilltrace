@@ -3,14 +3,40 @@ from flask_cors import CORS
 import json
 import pika
 import sys, os
+import amqp_lib
 from os import environ
-
 from invokes import invoke_http
 
 app = Flask(__name__)
 
 CORS(app)
 
+# RabbitMQ
+rabbit_host = environ.get("rabbit_host") or "localhost"
+rabbit_port = environ.get("rabbit_port") or 5672
+exchange_name = environ.get("exchange_name") or "order_topic"
+exchange_type = environ.get("exchange_type") or "topic"
+
+connection = None 
+channel = None
+
+def connectAMQP():
+    # Use global variables to reduce number of reconnection to RabbitMQ
+    # There are better ways but this suffices for our lab
+    global connection
+    global channel
+
+    print("Connecting to AMQP broker...")
+    try:
+        connection, channel = amqp_lib.connect(
+                hostname=rabbit_host,
+                port=rabbit_port,
+                exchange_name=exchange_name,
+                exchange_type=exchange_type,
+        )
+    except Exception as exception:
+        print(f"Unable to connect to RabbitMQ.\n     {exception=}\n")
+        exit(1) # terminate
 
 @app.route("/placeorder", methods=["POST"])
 def place_order():
@@ -51,11 +77,12 @@ def place_order():
                 return jsonify(order_result), http_status
             
             print(f"Successfully created order")
-            
+            print(order_result)
             customerID = order_result['order']['CustomerID']
             orderID = order_result['order']['ID']
             payment_amount = int(order_result['order']['TotalPrice']*100)
-            
+            scheduledDate = order_result['order']['ScheduledDate']
+            address = order['Address']
 
             # Update inventory with new quantity for reach order item
             update_result, http_status = updateInventory(order['OrderItems'])
@@ -66,7 +93,10 @@ def place_order():
             payment_details = {
                 "CustomerID": customerID,
                 "OrderID": orderID,
-                "Amount": payment_amount
+                "Amount": payment_amount,
+                "OrderItems": order_result['order']['OrderItems'],
+                "ScheduledDate": scheduledDate,
+                "Address": address
             }
             
             print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
@@ -110,21 +140,77 @@ def receivePayment():
         orderID = data.get('OrderID')
         customerID = data.get('CustomerID')
         paymentStatus = data.get('Payment Status')
+        orderItems = data.get('OrderItems')
+        amount = int(data.get('Amount'))/100
+        scheduledDate = data.get('ScheduledDate')
+        address = data.get('Address')
 
         if not orderID or paymentStatus != 'success':
             return jsonify({'error': 'Invalid data or payment not successful'}), 400
 
-
         print(f"Orchestrator received success message for Order ID: {orderID}")
 
+        # update order status to PAID
         update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
         print(f"result: {update_result}\nStatus: {status}")
-        return jsonify(update_result), status
+
+        # get datils for each item from inventory
+
+        receipt = "Your order has been received and payment was successful.\nOrder Items:\n" 
+        for item in orderItems:
+            itemID = item['ItemID']
+            details = getItem(itemID)
+            receipt+= f"\t{details['name']}\t${details['price']:.2f}\n"
+
+        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nDelivery Address: {address}\nThank you!"
+        
+        print("Publish message to AMQP Exchange for Notification")
+        message = {
+            "buyerID": customerID,
+            "subject": "Order " + str(orderID),
+            "body": receipt
+        }
+
+        message_body = json.dumps(message)
+
+        channel.basic_publish(
+            exchange=exchange_name, routing_key='order.paid', body=message_body,
+            properties=pika.BasicProperties(delivery_mode=2)
+        )
+
+        delivery_json = {
+            "orderId": orderID,
+            "customerId": customerID,
+            "address": address,
+            "deliveryDate": scheduledDate
+        }
+
+        print("Invoking delivery service to create delivery job")
+
+        delivery_result, http_status = invoke_http('https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI/delivery', method='POST', json=delivery_json)
+        
+        if http_status != 201:
+            return jsonify({
+                "Error": "Failed to create delivery job"
+            }), 500
+    
+        return jsonify({"code": 200, "Message": "Successfully placed order!"}), 200
     
 
     except Exception as e:
-        print(f"Error processing payment update: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+        # Unexpected error in code
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return jsonify(
+                {
+                    "code": 500,
+                    "message": "place_order.py internal error:",
+                    "exception": ex_str,
+                }
+        ), 500
 
 def checkInventory(items):
     # Send the order info to inventory microservice
@@ -227,8 +313,36 @@ def makePayment(paymentDetails):
                     "message": "check Payment internal error",
                     "exception": ex_str,
             }, 500
+    
+
+def getItem(itemID):
+    print(f"Fetching info from Inventory for itemID: {itemID}")
+
+    try:
+
+        item, status = invoke_http('http://localhost:5001/inventory/items/' + str(itemID), method='GET')
+
+        if status != 200:
+            return {
+                "Message": "failed to retrieve item. Check if item exists"
+            }, status
+
+        return item
+        
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return {
+                    "code": 500,
+                    "message": "check Inventory internal error",
+                    "exception": ex_str,
+            }, 500
 
 # Execute this program if it is run as a main script (not by 'import')
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
+    connectAMQP()
     app.run(host="0.0.0.0", port=5006, debug=True)

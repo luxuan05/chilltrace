@@ -1,17 +1,58 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from flask_sqlalchemy import SQLAlchemy
 from invokes import invoke_http
 import os
 import stripe
-
+import json
+import sys
 load_dotenv()
-app = Flask(__name__)
 
+class Config:
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    PORT = int(os.getenv("PORT", 5002))
+    SSL_CA = os.getenv("SSL_CA")
+
+    if not SQLALCHEMY_DATABASE_URI:
+        raise ValueError("DATABASE_URL is not set in .env")
+
+    if SSL_CA:
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            "connect_args": {"ssl": {"ca": SSL_CA}},
+            "pool_pre_ping": True
+        }
+    else:
+        SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+
+
+app = Flask(__name__)
+app.config.from_object(Config)
 CORS(app)
+
+db = SQLAlchemy()
+db.init_app(app)
 
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 CURR = 'SGD'
+
+class Payment(db.Model):
+    __tablename__ = "Payment"
+
+    orderID = db.Column(db.Integer, primary_key=True)
+    intentID = db.Column(db.String(255), primary_key=True)
+    status = db.Column(db.String(50))
+
+    def to_dict(self):
+        return {
+            "OrderID": self.orderID,
+            "IntentID": self.intentID,
+            "Status": self.status
+        }
+
+with app.app_context():
+    db.create_all()
 
 @app.route("/payment/create-intent", methods=['POST'])
 def create_intent():
@@ -19,6 +60,9 @@ def create_intent():
     oid = request.json.get('OrderID', None)
     # total amount should be in cents
     amt = request.json.get('Amount', None)
+    orderItems = request.json.get('OrderItems', None)
+    scheduledDate = request.json.get('ScheduledDate', None)
+    address = request.json.get('Address', None)
 
     try:
         
@@ -30,6 +74,9 @@ def create_intent():
             metadata={
                 "CustomerID": cid,
                 "OrderID": oid,
+                "OrderItems": json.dumps(orderItems),
+                "ScheduledDate": scheduledDate,
+                "Address": address
             },
 
             # allows Stripe to manage payment methods from your dashboard
@@ -37,6 +84,16 @@ def create_intent():
                 'enabled': True
             }
         )
+
+        new_intentID = Payment(
+            intentID=intent.client_secret.split("_secret_")[0],
+            orderID=oid,
+            status=''
+        )
+
+        db.session.add(new_intentID)
+        db.session.commit()
+
 
         # return client secret to frontend
         return jsonify(
@@ -46,7 +103,7 @@ def create_intent():
                     'CustomerID': cid,
                     'OrderID': oid,
                     'Amount': amt,
-                    'client_secret': intent.client_secret
+                    'client_secret': intent.client_secret.split("_secret_")[0]
                 }
             }
         ), 201
@@ -86,11 +143,17 @@ def stripe_webhook():
         metadata = payment_intent.get('metadata', {})
         orderID = metadata.get('OrderID')
         customerID = metadata.get('CustomerID')
+        scheduledDate = metadata.get('ScheduledDate')
+        address = metadata.get('Address')
+        orderItems = json.loads(metadata.get('OrderItems'))
 
         payload = {
             "OrderID": orderID,
             "CustomerID": customerID,
             "Amount": payment_intent['amount'],
+            "OrderItems": orderItems,
+            "ScheduledDate": scheduledDate,
+            "Address": address,
             "Payment Status": "success"
         }
 
@@ -119,7 +182,7 @@ def stripe_webhook():
 
 
 # retrieve specific payment transaction
-@app.route('/payment/<intent_id>', methods=['GET'])
+@app.route('/payment/intent/<intent_id>', methods=['GET'])
 def get_payment_info(intent_id):
     try: 
         # get complete PaymentIntent object from Stripe
@@ -149,7 +212,29 @@ def get_payment_info(intent_id):
     
     except stripe.error.StripeError as e:
         return jsonify({'error': str(e)}), 404
+
+# retrieve intentID using orderID
+@app.route('/payment/order/<order_id>', methods=['GET'])
+def getIntentID(order_id):
+    try:
+        intent_id = Payment.query.filter_by(orderID=order_id).first()
+        if not intent_id:
+            return jsonify({"error": "Order ID not found."}), 404
+        intent_id = intent_id.to_dict()
+        return intent_id['IntentID']
     
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+
+        return {
+                    "code": 500,
+                    "message": "check payment internal error:",
+                    "exception": ex_str,
+                }, 500
 
 # create refunds
 @app.route('/payment/refund', methods=['POST'])
