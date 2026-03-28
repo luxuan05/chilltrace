@@ -131,10 +131,10 @@ def stripe_webhook():
         )
     
     except ValueError as e:
-        return 'Invalid payload', 400
+        return {"Error": 'Invalid payload'}, 400
     
     except stripe.error.SignatureVerificationError as e:
-        return 'Invalid signature', 400
+        return {"Error": 'Invalid signature'}, 400
     
     if event['type'] == 'payment_intent.succeeded':
 
