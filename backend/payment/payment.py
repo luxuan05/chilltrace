@@ -40,6 +40,44 @@ db.init_app(app)
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 CURR = 'SGD'
 
+
+def normalize_payment_intent_id(value):
+    """Accept either a PaymentIntent ID or full client_secret and return intent ID."""
+    if not value:
+        return value
+    if "_secret_" in value:
+        return value.split("_secret_")[0]
+    return value
+
+
+def handle_successful_payment_intent(payment_intent):
+    metadata = payment_intent.get('metadata', {})
+    orderID = metadata.get('OrderID')
+    customerID = metadata.get('CustomerID')
+    scheduledDate = metadata.get('ScheduledDate')
+    address = metadata.get('Address')
+    orderItems = json.loads(metadata.get('OrderItems'))
+
+    payload = {
+        "OrderID": orderID,
+        "CustomerID": customerID,
+        "Amount": payment_intent['amount'],
+        "OrderItems": orderItems,
+        "ScheduledDate": scheduledDate,
+        "Address": address,
+        "Payment Status": "success"
+    }
+
+    print(f"Payment for {payment_intent['amount']} succeeded!")
+    print("Sending orderID and customerID back to place order service...")
+    request_data, status = invoke_http(
+        'http://localhost:5006/placeorder/receive-payment-status',
+        method='POST',
+        json=payload
+    )
+    print(f"{request_data}\nStatus: {status}")
+    return request_data, status
+
 class Payment(db.Model):
     __tablename__ = "Payment"
 
@@ -89,7 +127,7 @@ def create_intent():
         )
 
         new_intentID = Payment(
-            intentID=intent.client_secret.split("_secret_")[0],
+            intentID=intent.id,
             orderID=oid,
             status=''
         )
@@ -106,7 +144,8 @@ def create_intent():
                     'CustomerID': cid,
                     'OrderID': oid,
                     'Amount': amt,
-                    'client_secret': intent.client_secret.split("_secret_")[0]
+                    'payment_intent_id': intent.id,
+                    'client_secret': intent.client_secret
                 }
             }
         ), 201
@@ -140,30 +179,8 @@ def stripe_webhook():
         return {"Error": 'Invalid signature'}, 400
     
     if event['type'] == 'payment_intent.succeeded':
-
         payment_intent = event['data']['object']
-
-        metadata = payment_intent.get('metadata', {})
-        orderID = metadata.get('OrderID')
-        customerID = metadata.get('CustomerID')
-        scheduledDate = metadata.get('ScheduledDate')
-        address = metadata.get('Address')
-        orderItems = json.loads(metadata.get('OrderItems'))
-
-        payload = {
-            "OrderID": orderID,
-            "CustomerID": customerID,
-            "Amount": payment_intent['amount'],
-            "OrderItems": orderItems,
-            "ScheduledDate": scheduledDate,
-            "Address": address,
-            "Payment Status": "success"
-        }
-
-        print(f"Payment for {payment_intent['amount']} succeeded!")
-        print(f"Sending orderID and customerID back to place order service...")
-        request_data, status = invoke_http('http://localhost:5006/placeorder/receive-payment-status', method='POST', json=payload)
-        print(f"{request_data}\nStatus: {status}")
+        handle_successful_payment_intent(payment_intent)
 
     elif event['type'] == 'payment_intent.payment_failed':
         payment_intent = event['data']['object']
@@ -184,10 +201,44 @@ def stripe_webhook():
     return jsonify({'status': 'success'}), 200
 
 
+@app.route('/payment/confirm-intent', methods=['POST'])
+def confirm_intent_for_backend_flow():
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_intent_id = data.get('payment_intent_id') or data.get('client_secret')
+        intent_id = normalize_payment_intent_id(raw_intent_id)
+
+        if not intent_id:
+            return jsonify({'error': 'payment_intent_id is required'}), 400
+
+        payment_intent = stripe.PaymentIntent.retrieve(intent_id)
+        if payment_intent.get('status') != 'succeeded':
+            return jsonify({
+                'error': 'Payment intent is not succeeded',
+                'status': payment_intent.get('status')
+            }), 400
+
+        request_data, status = handle_successful_payment_intent(payment_intent)
+        if status >= 400:
+            return jsonify({
+                'error': 'Failed to continue backend flow',
+                'details': request_data
+            }), status
+
+        return jsonify({'status': 'success', 'details': request_data}), 200
+
+    except stripe.error.StripeError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': 'An unexpected error occurred: ' + str(e)}), 500
+
+
 # retrieve specific payment transaction
 @app.route('/payment/intent/<intent_id>', methods=['GET'])
 def get_payment_info(intent_id):
     try: 
+        intent_id = normalize_payment_intent_id(intent_id)
+
         # get complete PaymentIntent object from Stripe
         payment_intent = stripe.PaymentIntent.retrieve(intent_id, expand=['latest_charge'])
 
@@ -244,7 +295,7 @@ def getIntentID(order_id):
 def create_refund():
     try:
         data = request.json
-        intent_id = data.get('intent_id')
+        intent_id = normalize_payment_intent_id(data.get('intent_id'))
 
         if not intent_id:
             return jsonify({'error': 'intent_id is required'}), 400
