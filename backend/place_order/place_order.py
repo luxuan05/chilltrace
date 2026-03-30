@@ -103,6 +103,12 @@ def place_order():
 
             payment_result, http_status = makePayment(payment_details)
 
+            # Ensure frontend can reliably read result.data.OrderID.
+            if isinstance(payment_result, dict):
+                if not isinstance(payment_result.get("data"), dict):
+                    payment_result["data"] = {}
+                payment_result["data"]["OrderID"] = orderID
+
             return jsonify({
                 "code": 201,
                 "result": payment_result
