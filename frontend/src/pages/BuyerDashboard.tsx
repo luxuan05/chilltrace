@@ -168,12 +168,13 @@ const PlaceOrder = () => {
   const selectedSupplier = suppliers.find(
     (s) => s.ID === Number(selectedSupplierId),
   );
+  const isCardPayment = payment === "Credit Card" || payment === "Debit Card";
 
   useEffect(() => {
     let cancelled = false;
 
     const initStripeCardElement = async () => {
-      if (payment !== "Credit Card") {
+      if (!isCardPayment) {
         if (cardElementRef.current) {
           cardElementRef.current.destroy();
           cardElementRef.current = null;
@@ -214,7 +215,7 @@ const PlaceOrder = () => {
     return () => {
       cancelled = true;
     };
-  }, [payment, toast, cartItems.length]);
+  }, [isCardPayment, toast, cartItems.length]);
 
   const payForOrder = async () => {
     if (!pendingOrderSnapshot || !paymentIntentSecret) {
@@ -226,10 +227,13 @@ const PlaceOrder = () => {
       return;
     }
 
-    if (pendingOrderSnapshot.paymentMethod === "Credit Card") {
+    if (
+      pendingOrderSnapshot.paymentMethod === "Credit Card" ||
+      pendingOrderSnapshot.paymentMethod === "Debit Card"
+    ) {
       if (!cardName || !cardElementRef.current || !stripeRef.current) {
         toast({
-          title: "Please fill all credit card details",
+          title: "Please fill all card details",
           variant: "destructive",
         });
         return;
@@ -239,7 +243,10 @@ const PlaceOrder = () => {
     try {
       setIsPaying(true);
 
-      if (pendingOrderSnapshot.paymentMethod === "Credit Card") {
+      if (
+        pendingOrderSnapshot.paymentMethod === "Credit Card" ||
+        pendingOrderSnapshot.paymentMethod === "Debit Card"
+      ) {
         const result = await stripeRef.current!.confirmCardPayment(
           paymentIntentSecret,
           {
@@ -610,8 +617,7 @@ const PlaceOrder = () => {
                     className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   >
                     <option>Credit Card</option>
-                    <option>Bank Transfer</option>
-                    <option>Net 30</option>
+                    <option>Debit Card</option>
                   </select>
                 </div>
               </div>
@@ -633,7 +639,7 @@ const PlaceOrder = () => {
               <CardTitle className="text-base">{payment}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {payment === "Credit Card" ? (
+              {isCardPayment ? (
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <Label>Cardholder Name</Label>
