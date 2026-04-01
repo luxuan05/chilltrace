@@ -152,7 +152,7 @@ def receivePayment():
         address = data.get('Address')
 
         if not orderID or paymentStatus != 'success':
-            return jsonify({'error': 'Invalid data or payment not successful'}), 400
+            return jsonify({'Error': 'Invalid data or payment not successful'}), 400
 
         print(f"Orchestrator received success message for Order ID: {orderID}")
 

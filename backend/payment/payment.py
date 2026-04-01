@@ -159,46 +159,47 @@ def create_intent():
         ), 500
     
 # receives payment_intent_succeeded event directly from Stripe
-@app.route('/payment/webhook', methods =['POST'])
-def stripe_webhook():
-    payload = request.data
-    sig_header = request.headers.get('Stripe-Signature')
-    endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
+# @app.route('/payment/webhook', methods =['POST'])
+# def stripe_webhook():
+#     payload = request.data
+#     print(request.json)
+#     sig_header = request.headers.get('Stripe-Signature')
+#     endpoint_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
 
-    event = None
+#     event = None
 
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
+#     try:
+#         event = stripe.Webhook.construct_event(
+#             payload, sig_header, endpoint_secret
+#         )
     
-    except ValueError as e:
-        return {"Error": 'Invalid payload'}, 400
+#     except ValueError as e:
+#         return {"Error": 'Invalid payload'}, 400
     
-    except stripe.error.SignatureVerificationError as e:
-        return {"Error": 'Invalid signature'}, 400
+#     except stripe.error.SignatureVerificationError as e:
+#         return {"Error": 'Invalid signature'}, 400
     
-    if event['type'] == 'payment_intent.succeeded':
-        payment_intent = event['data']['object']
-        handle_successful_payment_intent(payment_intent)
+#     if event['type'] == 'payment_intent.succeeded':
+#         payment_intent = event['data']['object']
+#         handle_successful_payment_intent(payment_intent)
 
-    elif event['type'] == 'payment_intent.payment_failed':
-        payment_intent = event['data']['object']
-        print(f"Payment failed: {payment_intent['last_payment_error']['message']}")
+#     elif event['type'] == 'payment_intent.payment_failed':
+#         payment_intent = event['data']['object']
+#         print(f"Payment failed: {payment_intent['last_payment_error']['message']}")
     
-    elif event['type'] == 'charge.refunded':
-        charge = event['data']['object']
+#     elif event['type'] == 'charge.refunded':
+#         charge = event['data']['object']
 
-        refunded_amount = charge['amount_refunded']
-        intent_id = charge['payment_intent']
-        # charge_id = charge['id']
+#         refunded_amount = charge['amount_refunded']
+#         intent_id = charge['payment_intent']
+#         # charge_id = charge['id']
 
-        print(f"Refund of {refunded_amount} cents processed for Intent: {intent_id}")
+#         print(f"Refund of {refunded_amount} cents processed for Intent: {intent_id}")
     
-    else:
-        print(f"Unhandled event type {event['type']}")
+#     else:
+#         print(f"Unhandled event type {event['type']}")
 
-    return jsonify({'status': 'success'}), 200
+#     return jsonify({'status': 'success'}), 200
 
 
 @app.route('/payment/confirm-intent', methods=['POST'])
@@ -338,7 +339,7 @@ def get_refunds(refund_id):
         }), 200
     
     except stripe.error.StripeError as e:
-        return jsonify({'error': str(e.user_message)}), 404
+        return jsonify({'error': str(e.user_message)}), 400
     
     except Exception as e:
         return jsonify({'error': 'An unexpected error occurred.'}), 500
