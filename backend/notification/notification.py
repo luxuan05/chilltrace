@@ -5,8 +5,7 @@ import smtplib
 from email.mime.text import MIMEText
 import amqp_lib
 import requests
-import pymysql
-import pymysql.cursors
+
 
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file into os.environ
@@ -23,57 +22,6 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 # ── Gmail config ──────────────────────────────────────────────────────────────
 GMAIL_FROM         = os.getenv("GMAIL_FROM")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-
-# ── MySQL config ──────────────────────────────────────────────────────────────
-DB_HOST     = os.getenv("DB_HOST", "localhost")
-DB_PORT     = int(os.getenv("DB_PORT", 3306))
-DB_USER     = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME     = os.getenv("DB_NAME", "your_database")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Database helper
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_connection():
-    """Create and return a new MySQL connection."""
-    return pymysql.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME,
-        cursorclass=pymysql.cursors.DictCursor,
-        autocommit=False,
-    )
-
-
-def get_buyer_info(buyer_id):
-    """
-    Fetch ChatID and Email from Buyer table using the ID (primary key).
-    Returns dict with 'chat_id' and 'email', or None if not found.
-    """
-    try:
-        conn = get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT ChatID, Email FROM Buyer WHERE ID = %s",
-                (buyer_id,)
-            )
-            result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            return {
-                "chat_id": result["ChatID"],  # may be None if buyer hasn't /start-ed yet
-                "email":   result["Email"],
-            }
-        return None
-
-    except Exception as e:
-        print(f"Database error: {e}")
-        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,30 +87,17 @@ def callback(channel, method, properties, body):
         print(f"Raw body: {body}")
         return
 
-    buyer_id     = message.get("buyerID")
-    subject      = message.get("subject")
-    message_body = message.get("body")
+    recipient_email = message.get("recipient_email")
+    chat_id         = message.get("chat_id")
+    subject         = message.get("subject")
+    message_body    = message.get("body")
 
-    # Validate required fields
-    if not buyer_id or not subject or not message_body:
-        print("Missing buyerID, subject, or body. Skipping notification.")
+    if not subject or not message_body:
+        print("Missing subject or body. Skipping.")
         return
 
-    # Fetch buyer info (ChatID + Email) from Buyer table
-    buyer_info = get_buyer_info(buyer_id)
-
-    if not buyer_info:
-        print(f"Could not retrieve buyer info for buyerID: {buyer_id}. Skipping.")
-        return
-
-    # ── Send Email ────────────────────────────────────────────────────────────
-    send_email(buyer_info["email"], subject, message_body)
-
-    # ── Send Telegram ─────────────────────────────────────────────────────────
-    telegram_message = f"*{subject}*\n\n{message_body}"
-    send_telegram(buyer_info["chat_id"], telegram_message)
-
-    print(f"Notifications processed for buyerID: {buyer_id}")
+    send_email(recipient_email, subject, message_body)
+    send_telegram(chat_id, f"*{subject}*\n\n{message_body}")
     print()
 
 

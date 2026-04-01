@@ -4,7 +4,7 @@ import { ShoppingCart, ClipboardList, Package, Plus } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { useAppData } from "@/context/AppDataContext";
-import { Order, OrderItem } from "@/types";
+import { Order, OrderItem, OrderStatus } from "@/types";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,13 @@ const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = stripePublishableKey
   ? loadStripe(stripePublishableKey)
   : null;
+
+// ── Service URLs ──────────────────────────────────────────────────────────────
+const SUPPLIER_SERVICE_URL     = "http://localhost:5011";
+const INVENTORY_SERVICE_URL    = "http://localhost:5001";
+const PLACE_ORDER_SERVICE_URL  = "http://localhost:5006";
+const ORDER_SERVICE_URL        = "http://localhost:5002";
+const CANCEL_ORDER_SERVICE_URL = "http://localhost:5009";
 
 const navItems = [
   { label: "Place Order", path: "/buyer", icon: <Plus className="h-4 w-4" /> },
@@ -106,7 +113,7 @@ const PlaceOrder = () => {
   useEffect(() => {
     const fetchSuppliers = async () => {
       try {
-        const res = await fetch("http://localhost:5011/supplier");
+        const res = await fetch(`${SUPPLIER_SERVICE_URL}/supplier`);
         const data = await res.json();
         setSuppliers(data);
       } catch {
@@ -128,7 +135,7 @@ const PlaceOrder = () => {
       setLoadingInventory(true);
       setCart({});
       try {
-        const url = `http://localhost:5001/api/inventory/items?supplier_id=${selectedSupplierId}`;
+        const url = `${INVENTORY_SERVICE_URL}/api/inventory/items?supplier_id=${selectedSupplierId}`;
         console.log("Fetching inventory from:", url);
         const res = await fetch(url);
         console.log("Status:", res.status);
@@ -364,7 +371,7 @@ const PlaceOrder = () => {
     try {
       setPlacingOrder(true);
 
-      const res = await fetch("http://localhost:5006/placeorder", {
+      const res = await fetch(`${PLACE_ORDER_SERVICE_URL}/placeorder`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -405,9 +412,7 @@ const PlaceOrder = () => {
         return;
       }
 
-      const generatedOrderId = orderIdFromBackend
-        ? `ORD-${String(orderIdFromBackend).padStart(3, "0")}`
-        : `ORD-${String(orders.length + 1).padStart(3, "0")}`;
+      const generatedOrderId = `ORD-${String(orderIdFromBackend).padStart(3, "0")}`;
 
       setPendingOrderSnapshot({
         orderId: generatedOrderId,
@@ -689,10 +694,68 @@ const PlaceOrder = () => {
 
 /* ─── Order History ─── */
 const OrderHistory = () => {
-  const { orders, setOrders } = useAppData();
   const { user } = useAuth();
   const { toast } = useToast();
-  const myOrders = orders.filter((o) => o.buyerId === String(user?.ID));
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // Add this helper above the fetchOrders function in both OrderHistory and SupplierOrders
+  const mapStatus = (backendStatus: string): OrderStatus => {
+    const map: Record<string, OrderStatus> = {
+      received:             "pending",
+      pending:              "pending",
+      paid:                 "confirmed",
+      confirmed:            "confirmed",
+      scheduled:            "processing",
+      in_transit:           "in_transit",
+      delivered:            "delivered",
+      cancelled:            "cancelled",
+      failed:               "cancelled",
+      failed_temp_breach:   "cancelled",
+    };
+    return map[backendStatus?.toLowerCase()] ?? "pending";
+  };
+
+  const fetchOrders = async () => {
+    if (!user?.ID) return;
+    try {
+      const res = await fetch(`${ORDER_SERVICE_URL}/orders`);
+      const data = await res.json();
+      const filtered = (Array.isArray(data) ? data : [])
+        .filter((o: any) => String(o.CustomerID) === String(user.ID))
+        .map((o: any) => ({
+          id: String(o.ID),
+          buyerId: String(o.CustomerID),
+          supplierId: String(o.SupplierId),
+          status: mapStatus(o.OrderStatus),
+          totalAmount: o.TotalPrice ?? 0,
+          deliveryDate: o.ScheduledDate ?? "",
+          items: (o.OrderItems ?? []).map((i: any) => ({
+            inventoryId: String(i.ItemID),
+            name: String(i.ItemID),
+            qty: i.Quantity,
+            unit: "",
+            pricePerUnit: i.UnitPrice,
+          })),
+          createdAt: "",
+          updatedAt: "",
+          supplierName: "",
+          buyerName: "",
+          deliveryAddress: "",
+          paymentMethod: "",
+        }));
+      setMyOrders(filtered);
+    } catch {
+      toast({ title: "Failed to load orders", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, [user?.ID]);
 
   const canCancel = (order: Order) => {
     if (order.status === "cancelled" || order.status === "delivered")
@@ -704,19 +767,22 @@ const OrderHistory = () => {
     return hoursUntilDelivery > 24;
   };
 
-  const cancelOrder = (id: string) => {
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id
-          ? {
-              ...o,
-              status: "cancelled" as const,
-              updatedAt: new Date().toISOString(),
-            }
-          : o,
-      ),
-    );
-    toast({ title: `Order ${id} cancelled` });
+  const cancelOrder = async (id: string) => {
+    setCancellingId(id);
+    try {
+      const res = await fetch(`${CANCEL_ORDER_SERVICE_URL}/cancelorder/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Failed to cancel");
+      toast({ title: `Order ${id} cancelled successfully` });
+      await fetchOrders();
+    } catch {
+      toast({ title: "Failed to cancel order", variant: "destructive" });
+    } finally {
+      setCancellingId(null);
+    }
   };
 
   return (
@@ -724,6 +790,9 @@ const OrderHistory = () => {
       <h1 className="text-2xl font-bold text-foreground">Order History</h1>
       <Card>
         <CardContent className="p-0">
+          {loading ? (
+            <p className="text-sm text-muted-foreground p-6">Loading orders...</p>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -757,8 +826,9 @@ const OrderHistory = () => {
                         size="sm"
                         variant="destructive"
                         onClick={() => cancelOrder(order.id)}
+                        disabled={cancellingId === order.id}
                       >
-                        Cancel
+                        {cancellingId === order.id ? "Cancelling..." : "Cancel"}
                       </Button>
                     )}
                   </TableCell>
@@ -776,6 +846,7 @@ const OrderHistory = () => {
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>
