@@ -10,8 +10,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
-import { useAppData } from "@/context/AppDataContext";
-import { Order } from "@/types";
+import { Order, OrderStatus } from "@/types";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +41,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+
+// ── Service URLs ──────────────────────────────────────────────────────────────
+const INVENTORY_SERVICE_URL       = "http://localhost:5001";
+const ORDER_SERVICE_URL           = "http://localhost:5002";
+const MANAGE_SUPPLIER_SERVICE_URL = "http://localhost:5010";
 
 const navItems = [
   { label: "Inventory", path: "/supplier", icon: <Package className="h-4 w-4" /> },
@@ -81,7 +85,7 @@ const InventoryManagement = () => {
   const fetchInventory = async () => {
     if (!user?.ID) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/inventory/items?supplier_id=${user.ID}`);
+      const res = await fetch(`${INVENTORY_SERVICE_URL}/api/inventory/items?supplier_id=${user.ID}`);
       const data = await res.json();
       setInventory(data);
     } catch {
@@ -146,7 +150,7 @@ const InventoryManagement = () => {
     try {
       if (editItem) {
         // Update existing item
-        const res = await fetch(`http://localhost:5001/api/inventory/items/${editItem.item_id}`, {
+        const res = await fetch(`${INVENTORY_SERVICE_URL}/api/inventory/items/${editItem.item_id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -175,7 +179,7 @@ const InventoryManagement = () => {
 
   const deleteItem = async (id: number) => {
     try {
-      await fetch(`http://localhost:5001/inventory/items/${id}`, { method: "DELETE" });
+      await fetch(`${INVENTORY_SERVICE_URL}/inventory/items/${id}`, { method: "DELETE" });
       setInventory((prev) => prev.filter((i) => i.item_id !== id));
       toast({ title: "Item deleted" });
     } catch {
@@ -333,10 +337,67 @@ const InventoryManagement = () => {
 
 /* ─── Supplier Orders ─── */
 const SupplierOrders = () => {
-  const { orders, setOrders } = useAppData();
   const { user } = useAuth();
   const { toast } = useToast();
-  const myOrders = orders.filter((o) => o.supplierId === String(user?.ID));
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const mapStatus = (backendStatus: string): OrderStatus => {
+    const map: Record<string, OrderStatus> = {
+      received:           "pending",
+      pending:            "pending",
+      paid:               "confirmed",
+      confirmed:          "confirmed",
+      scheduled:          "processing",
+      in_transit:         "in_transit",
+      delivered:          "delivered",
+      cancelled:          "cancelled",
+      failed:             "cancelled",
+      failed_temp_breach: "cancelled",
+    };
+    return map[backendStatus?.toLowerCase()] ?? "pending";
+  };
+
+  const fetchOrders = async () => {
+    if (!user?.ID) return;
+    try {
+      const res = await fetch(`${ORDER_SERVICE_URL}/orders`);
+      const data = await res.json();
+      const filtered = (Array.isArray(data) ? data : [])
+        .filter((o: any) => String(o.SupplierId) === String(user.ID))
+        .map((o: any) => ({
+          id: String(o.ID),
+          buyerId: String(o.CustomerID),
+          supplierId: String(o.SupplierId),
+          status: mapStatus(o.OrderStatus),
+          totalAmount: o.TotalPrice ?? 0,
+          deliveryDate: o.ScheduledDate ?? "",
+          items: (o.OrderItems ?? []).map((i: any) => ({
+            inventoryId: String(i.ItemID),
+            name: String(i.ItemID),
+            qty: i.Quantity,
+            unit: "",
+            pricePerUnit: i.UnitPrice,
+          })),
+          createdAt: "",
+          updatedAt: "",
+          supplierName: "",
+          buyerName: String(o.CustomerID),
+          deliveryAddress: "",
+          paymentMethod: "",
+        }));
+      setMyOrders(filtered);
+    } catch {
+      toast({ title: "Failed to load orders", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, [user?.ID]);
 
   const canCancel = (order: Order) => {
     if (order.status === "cancelled" || order.status === "delivered") return false;
@@ -346,18 +407,21 @@ const SupplierOrders = () => {
     return daysUntilDelivery > 3;
   };
 
-  const cancelOrder = (id: string) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status: "cancelled" as const, updatedAt: new Date().toISOString() } : o))
-    );
-    toast({ title: `Order ${id} cancelled` });
-  };
-
-  const confirmOrder = (id: string) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === id && o.status === "pending" ? { ...o, status: "confirmed" as const, updatedAt: new Date().toISOString() } : o))
-    );
-    toast({ title: `Order ${id} confirmed` });
+  const cancelOrder = async (id: string) => {
+    setCancellingId(id);
+    try {
+      const res = await fetch(
+        `${MANAGE_SUPPLIER_SERVICE_URL}/supplier/${user?.ID}/orders/${id}/cancel`,
+        { method: "PUT" }
+      );
+      if (!res.ok) throw new Error("Failed to cancel");
+      toast({ title: `Order ${id} cancelled successfully` });
+      await fetchOrders();
+    } catch {
+      toast({ title: "Failed to cancel order", variant: "destructive" });
+    } finally {
+      setCancellingId(null);
+    }
   };
 
   return (
@@ -365,6 +429,9 @@ const SupplierOrders = () => {
       <h1 className="text-2xl font-bold text-foreground">Orders</h1>
       <Card>
         <CardContent className="p-0">
+          {loading ? (
+            <p className="text-sm text-muted-foreground p-6">Loading orders...</p>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -389,14 +456,14 @@ const SupplierOrders = () => {
                   <TableCell>${order.totalAmount.toFixed(2)}</TableCell>
                   <TableCell><StatusBadge status={order.status} /></TableCell>
                   <TableCell className="text-right space-x-1">
-                    {order.status === "pending" && (
-                      <Button size="sm" variant="outline" onClick={() => confirmOrder(order.id)}>
-                        Confirm
-                      </Button>
-                    )}
                     {canCancel(order) && (
-                      <Button size="sm" variant="destructive" onClick={() => cancelOrder(order.id)}>
-                        Cancel
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => cancelOrder(order.id)}
+                        disabled={cancellingId === order.id}
+                      >
+                        {cancellingId === order.id ? "Cancelling..." : "Cancel"}
                       </Button>
                     )}
                   </TableCell>
@@ -409,6 +476,7 @@ const SupplierOrders = () => {
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>
