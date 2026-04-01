@@ -1,136 +1,202 @@
 import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import {
-  Truck,
-  ClipboardList,
-  MapPin,
-  Thermometer,
-  AlertTriangle,
-} from "lucide-react";
+import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
+// ── Service URLs ──────────────────────────────────────────────────────────────
+const ORDER_SERVICE_URL           = "http://localhost:5002";
+const INVENTORY_SERVICE_URL       = "http://localhost:5001";
+const UPDATE_DELIVERY_SERVICE_URL = "http://localhost:5008";
+
+// DeliveryAPI — GET and PUT both use camelCase keys.
+// PUT /delivery/{orderId}/ requires ALL fields (full object, not partial).
+const DELIVERY_API = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
+
+// ── Nav ───────────────────────────────────────────────────────────────────────
 const navItems = [
-  { label: "Available Orders", path: "/driver", icon: <ClipboardList className="h-4 w-4" /> },
-  { label: "My Deliveries", path: "/driver/deliveries", icon: <Truck className="h-4 w-4" /> },
+  { label: "Available Jobs", path: "/driver",            icon: <ClipboardList className="h-4 w-4" /> },
+  { label: "My Deliveries",  path: "/driver/deliveries", icon: <Truck className="h-4 w-4" /> },
 ];
 
-interface BackendOrder {
-  ID: number;
-  CustomerID: number;
-  SupplierId: number;
-  OrderStatus: string;
-  TotalPrice: number;
-  ScheduledDate: string | null;
-  DriverID: number | null;
-  OrderItems: {
-    ID: number;
-    OrderID: number;
-    ItemID: number;
-    Quantity: number;
-    UnitPrice: number;
-  }[];
+// ── Types — camelCase matching actual API response ────────────────────────────
+interface DeliveryJob {
+  id: number;
+  orderId: number;
+  customerId: number;
+  address: string;
+  deliveryDate: string | null;
+  deliveryStatus: string;
+  driver?: number | null;
+  initialTemperature?: number | null;
+  finalTemperature?: number | null;
 }
 
-/* ─── Available Orders ─── */
-const AvailableOrders = () => {
+// ── Badge helper ──────────────────────────────────────────────────────────────
+function getStatusBadgeClass(status: string) {
+  switch ((status ?? "").toUpperCase()) {
+    case "DELIVERED":          return "bg-green-100 text-green-700 border-green-200";
+    case "CANCELLED":          return "bg-red-100 text-red-700 border-red-200";
+    case "FAILED_TEMP_BREACH": return "bg-orange-100 text-orange-700 border-orange-200";
+    case "IN_TRANSIT":         return "bg-blue-100 text-blue-700 border-blue-200";
+    case "SCHEDULED":          return "bg-purple-100 text-purple-700 border-purple-200";
+    case "ACCEPTED":           return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    default:                   return "bg-muted text-muted-foreground";
+  }
+}
+
+// ── Fetch ALL deliveries via GET /delivery/ ───────────────────────────────────
+async function fetchAllDeliveries(): Promise<DeliveryJob[]> {
+  const res = await fetch(`${DELIVERY_API}/delivery/`);
+  if (!res.ok) throw new Error("Failed to fetch deliveries");
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.Deliveries)) return data.Deliveries;
+  if (Array.isArray(data.deliveries)) return data.deliveries;
+  return [];
+}
+
+// ── Fetch single delivery by orderId ─────────────────────────────────────────
+
+// ── PUT delivery — always sends the full object to satisfy OutSystems ─────────
+// Pass the current job directly to skip a redundant GET round-trip.
+async function putDelivery(
+  current: DeliveryJob,
+  partial: Partial<DeliveryJob>
+): Promise<Response> {
+  const full = {
+    address:            current.address            ?? "",
+    deliveryDate:       current.deliveryDate       ?? null,
+    deliveryStatus:     current.deliveryStatus     ?? "",
+    driver:             current.driver             ?? 0,
+    initialTemperature: current.initialTemperature ?? 0,
+    finalTemperature:   current.finalTemperature   ?? 0,
+    ...partial,
+  };
+  return fetch(`${DELIVERY_API}/delivery/${current.orderId}/`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(full),
+  });
+}
+
+// ── Fetch strictest temp range for an order ───────────────────────────────────
+async function fetchTempRangeForOrder(
+  orderId: number
+): Promise<{ minTemp: number | null; maxTemp: number | null }> {
+  const orderRes = await fetch(`${ORDER_SERVICE_URL}/orders/${orderId}`);
+  if (!orderRes.ok) throw new Error(`Order ${orderId} not found`);
+  const order = await orderRes.json();
+
+  const items: { ItemID?: number; item_id?: number }[] =
+    order.OrderItems ?? order.items ?? [];
+  if (items.length === 0) return { minTemp: null, maxTemp: null };
+
+  let minTemp: number | null = null;
+  let maxTemp: number | null = null;
+
+  await Promise.all(
+    items.map(async (oi) => {
+      const itemId = oi.ItemID ?? oi.item_id;
+      if (!itemId) return;
+      try {
+        const invRes = await fetch(`${INVENTORY_SERVICE_URL}/inventory/items/${itemId}`);
+        if (!invRes.ok) return;
+        const inv = await invRes.json();
+        const invMin: number | null = inv.MinTemperature ?? inv.min_temperature ?? null;
+        const invMax: number | null = inv.MaxTemperature ?? inv.max_temperature ?? null;
+        if (invMin !== null) minTemp = minTemp === null ? invMin : Math.max(minTemp, invMin);
+        if (invMax !== null) maxTemp = maxTemp === null ? invMax : Math.min(maxTemp, invMax);
+      } catch { /* ignore */ }
+    })
+  );
+
+  return { minTemp, maxTemp };
+}
+
+// ── Available Jobs ────────────────────────────────────────────────────────────
+const AvailableJobs = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [jobs, setJobs]       = useState<DeliveryJob[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchOrders = async () => {
+  const loadJobs = async () => {
+    setLoading(true);
     try {
-      const res = await fetch("http://localhost:5002/orders");
-      const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
-    } catch {
-      toast({ title: "Failed to load orders", variant: "destructive" });
+      const all = await fetchAllDeliveries();
+      // Available = no driver assigned (absent/null/0) AND status SCHEDULED
+      setJobs(
+        all.filter(
+          (d) =>
+            !d.driver &&
+            (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED"
+        )
+      );
+    } catch (err: any) {
+      toast({ title: "Failed to load available jobs", description: err?.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  useEffect(() => { loadJobs(); }, []);
 
-  const available = orders.filter(
-    (o) =>
-      (o.OrderStatus === "RECEIVED" ||
-        o.OrderStatus === "PAID" ||
-        o.OrderStatus === "SCHEDULED") &&
-      !o.DriverID
-  );
-
-  const acceptOrder = async (id: number) => {
+  const acceptJob = async (job: DeliveryJob) => {
+    if (!user) return;
     try {
-      const res = await fetch(`http://localhost:5002/orders/${id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ OrderStatus: "IN_TRANSIT", DriverID: user!.ID }),
+      const res = await putDelivery(job, {
+        driver:         user.ID,
+        deliveryStatus: "ACCEPTED",
       });
-      if (!res.ok) throw new Error();
-      toast({ title: `Order #${id} accepted for delivery` });
-      await fetchOrders();
-    } catch {
-      toast({ title: "Failed to accept order", variant: "destructive" });
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: `Job accepted — Order #${job.orderId}` });
+      await loadJobs();
+    } catch (err: any) {
+      toast({ title: "Failed to accept job", description: err?.message, variant: "destructive" });
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold text-foreground">Available Orders</h1>
+      <h1 className="text-2xl font-bold text-foreground">Available Delivery Jobs</h1>
+
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading orders...</p>
+        <p className="text-sm text-muted-foreground">Loading jobs...</p>
       ) : (
         <div className="grid gap-4">
-          {available.map((order) => (
-            <Card key={order.ID}>
+          {jobs.map((job) => (
+            <Card key={job.id}>
               <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-foreground">Order #{order.ID}</span>
-                      <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
-                        {order.OrderStatus}
+                      <span className="font-bold text-foreground">Order #{job.orderId}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}>
+                        {job.deliveryStatus}
                       </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {order.OrderItems.length} item(s) · Total: ${order.TotalPrice.toFixed(2)}
-                    </p>
-                    {order.ScheduledDate && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="h-3.5 w-3.5" />
-                        Delivery: {order.ScheduledDate}
-                      </div>
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      {job.address}
+                    </div>
+                    {job.deliveryDate && (
+                      <p className="text-sm text-muted-foreground">
+                        Delivery Date: {new Date(job.deliveryDate).toLocaleDateString()}
+                      </p>
                     )}
-                    <p className="text-sm text-muted-foreground">
-                      Supplier ID: {order.SupplierId} · Customer ID: {order.CustomerID}
-                    </p>
+                    <p className="text-sm text-muted-foreground">Customer ID: {job.customerId}</p>
                   </div>
                   <Button
-                    onClick={() => acceptOrder(order.ID)}
-                    className="gradient-frost text-accent-foreground hover:opacity-90"
+                    onClick={() => acceptJob(job)}
+                    className="gradient-frost text-accent-foreground hover:opacity-90 shrink-0"
                   >
                     Accept
                   </Button>
@@ -138,10 +204,11 @@ const AvailableOrders = () => {
               </CardContent>
             </Card>
           ))}
-          {available.length === 0 && (
+
+          {jobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
-                No available orders at the moment
+                No available delivery jobs at the moment
               </CardContent>
             </Card>
           )}
@@ -151,121 +218,243 @@ const AvailableOrders = () => {
   );
 };
 
-/* ─── Temperature Cell ─── */
-const TemperatureCell = ({
-  order,
-  onBreach,
-}: {
-  order: BackendOrder;
-  onBreach: (id: number, temp: string) => void;
-}) => {
-  const [temp, setTemp] = useState("");
+// ── Temperature input cell ────────────────────────────────────────────────────
+interface TempCellProps {
+  job: DeliveryJob;
+  onSave: (job: DeliveryJob, initTemp: number, finalTemp: number) => Promise<void>;
+}
 
-  const isActive =
-    order.OrderStatus !== "DELIVERED" &&
-    order.OrderStatus !== "CANCELLED" &&
-    order.OrderStatus !== "FAILED_TEMP_BREACH";
+const TemperatureCell = ({ job, onSave }: TempCellProps) => {
+  const status = (job.deliveryStatus ?? "").toUpperCase();
 
-  if (!isActive) return <span className="text-xs text-muted-foreground">—</span>;
+  const [initTemp,  setInitTemp]  = useState(
+    job.initialTemperature != null ? String(job.initialTemperature) : ""
+  );
+  const [finalTemp, setFinalTemp] = useState(
+    job.finalTemperature != null ? String(job.finalTemperature) : ""
+  );
+  const [saving, setSaving] = useState(false);
+
+  // Terminal states — read-only
+  const isFinal = ["DELIVERED", "CANCELLED", "FAILED_TEMP_BREACH"].includes(status);
+  if (isFinal) {
+    return (
+      <div className="text-xs text-muted-foreground space-y-0.5">
+        <div>Init: {job.initialTemperature ?? "—"}°C</div>
+        <div>Final: {job.finalTemperature ?? "—"}°C</div>
+      </div>
+    );
+  }
+
+  // Not yet IN_TRANSIT — locked
+  if (status !== "IN_TRANSIT") {
+    return (
+      <span className="text-xs text-muted-foreground italic">
+        Available once In Transit
+      </span>
+    );
+  }
+
+  // OutSystems silently stores NULL when it receives exactly 0.
+  // Substitute 0 -> 0.01 so the value is preserved in the DB.
+  const sanitiseTemp = (val: string): number => {
+    const n = parseFloat(val);
+    return n === 0 ? 0.01 : n;
+  };
+
+  const handleSave = async () => {
+    if (initTemp === "" || finalTemp === "") return;
+    setSaving(true);
+    await onSave(job, sanitiseTemp(initTemp), sanitiseTemp(finalTemp));
+    setSaving(false);
+  };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1.5 min-w-[150px]">
       <div className="relative">
         <Thermometer className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <Input
           type="number"
-          placeholder="°C"
-          value={temp}
-          onChange={(e) => setTemp(e.target.value)}
-          className="pl-7 w-24 h-8 text-sm"
+          placeholder="Initial °C"
+          value={initTemp}
+          onChange={(e) => setInitTemp(e.target.value)}
+          className="pl-7 h-8 text-sm"
+          disabled={saving}
         />
       </div>
+      <div className="relative">
+        <Thermometer className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-blue-400" />
+        <Input
+          type="number"
+          placeholder="Final °C"
+          value={finalTemp}
+          onChange={(e) => setFinalTemp(e.target.value)}
+          className="pl-7 h-8 text-sm"
+          disabled={saving}
+        />
+      </div>
+      {(initTemp === "0" || finalTemp === "0") && (
+        <p className="text-xs text-amber-500">
+          Note: 0°C is not supported, will be stored as 0.1°C
+        </p>
+      )}
       <Button
         size="sm"
-        variant="destructive"
-        className="h-8 text-xs gap-1"
-        disabled={!temp}
-        onClick={() => onBreach(order.ID, temp)}
+        className="h-7 text-xs"
+        disabled={saving || initTemp === "" || finalTemp === ""}
+        onClick={handleSave}
       >
-        <AlertTriangle className="h-3.5 w-3.5" />
-        Breach
+        {saving ? "Checking..." : "Submit"}
       </Button>
     </div>
   );
 };
 
-/* ─── My Deliveries ─── */
+// ── Start Delivery button cell ────────────────────────────────────────────────
+interface StartDeliveryCellProps {
+  job: DeliveryJob;
+  onStart: (job: DeliveryJob) => Promise<void>;
+}
+
+const StartDeliveryCell = ({ job, onStart }: StartDeliveryCellProps) => {
+  const status = (job.deliveryStatus ?? "").toUpperCase();
+  const [starting, setStarting] = useState(false);
+
+  if (status !== "ACCEPTED") return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deliveryDate = job.deliveryDate ? new Date(job.deliveryDate) : null;
+  if (deliveryDate) deliveryDate.setHours(0, 0, 0, 0);
+
+  const canStart = deliveryDate ? today >= deliveryDate : false;
+
+  const handleStart = async () => {
+    setStarting(true);
+    await onStart(job);
+    setStarting(false);
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-7 text-xs gap-1.5 border-blue-300 text-blue-600 hover:bg-blue-50"
+      disabled={starting || !canStart}
+      onClick={handleStart}
+      title={!canStart ? `Delivery date is ${job.deliveryDate}` : "Start this delivery"}
+    >
+      <PlayCircle className="h-3.5 w-3.5" />
+      {starting
+        ? "Starting..."
+        : canStart
+          ? "Start Delivery"
+          : `Starts ${job.deliveryDate ? new Date(job.deliveryDate).toLocaleDateString() : "—"}`}
+    </Button>
+  );
+};
+
+// ── My Deliveries ─────────────────────────────────────────────────────────────
 const MyDeliveries = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [jobs, setJobs]       = useState<DeliveryJob[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchOrders = async () => {
+  const loadJobs = async () => {
+    setLoading(true);
     try {
-      const res = await fetch("http://localhost:5002/orders");
-      const data = await res.json();
-      const arr = Array.isArray(data) ? data : [];
-      setOrders(arr.filter((o: BackendOrder) => o.DriverID === user?.ID));
-    } catch {
-      toast({ title: "Failed to load deliveries", variant: "destructive" });
+      const all = await fetchAllDeliveries();
+      setJobs(all.filter((d) => d.driver === user?.ID));
+    } catch (err: any) {
+      toast({ title: "Failed to load deliveries", description: err?.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  useEffect(() => { loadJobs(); }, []);
 
-  // Full status flow drivers can move through
-  const statusFlow = ["SCHEDULED", "IN_TRANSIT", "DELIVERED", "CANCELLED"];
-
-  const updateStatus = async (id: number, newStatus: string) => {
+  // ── ACCEPTED → IN_TRANSIT ───────────────────────────────────────────────
+  const handleStartDelivery = async (job: DeliveryJob) => {
     try {
-      const res = await fetch(`http://localhost:5002/orders/${id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ OrderStatus: newStatus }),
+      const res = await putDelivery(job, {
+        deliveryStatus: "IN_TRANSIT",
       });
-      if (!res.ok) throw new Error();
-      toast({ title: `Order #${id} updated to ${newStatus.replace(/_/g, " ")}` });
-      await fetchOrders();
-    } catch {
-      toast({ title: "Failed to update status", variant: "destructive" });
+      if (!res.ok) throw new Error(await res.text());
+      toast({ title: `Order #${job.orderId} is now In Transit` });
+      await loadJobs();
+    } catch (err: any) {
+      toast({ title: "Failed to start delivery", description: err?.message, variant: "destructive" });
     }
   };
 
-  const reportBreach = async (id: number, temperature: string) => {
+  // ── Temperature submit → DELIVERED or CANCELLED ─────────────────────────
+  const handleTemperatureSave = async (
+    job: DeliveryJob,
+    initTemp: number,
+    finalTemp: number
+  ) => {
     try {
-      const res = await fetch(`http://localhost:5002/orders/${id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ OrderStatus: "FAILED_TEMP_BREACH" }),
+      // 1. Fetch strictest temp range from inventory
+      const { minTemp, maxTemp } = await fetchTempRangeForOrder(job.orderId);
+
+      // 2. Determine breach
+      const breached =
+        (minTemp !== null && finalTemp < minTemp) ||
+        (maxTemp !== null && finalTemp > maxTemp);
+
+      const newDeliveryStatus = breached ? "CANCELLED" : "DELIVERED";
+
+      // 3. Save temperatures + final status in ONE PUT so nothing overwrites them.
+      //    The composite service (port 5008) also calls PUT /delivery/{orderId}/
+      //    internally with only DeliveryStatus, which would blank out temperatures
+      //    if we saved them in a separate earlier call.
+      const tempRes = await putDelivery(job, {
+        initialTemperature: initTemp,
+        finalTemperature:   finalTemp,
+        deliveryStatus:     newDeliveryStatus,
       });
-      if (!res.ok) throw new Error();
+      if (!tempRes.ok) throw new Error("Failed to save temperatures");
+
+      // 4. Call Update Delivery Status composite service (port 5008)
+      //    Updates OrderStatus + sends AMQP notification
+      //    (DeliveryStatus already updated above — port 5008's internal PUT
+      //     will re-set it to the same value, which is harmless)
+      const statusRes = await fetch(
+        `${UPDATE_DELIVERY_SERVICE_URL}/delivery_job/${job.orderId}/status`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status:      newDeliveryStatus,
+            customer_id: job.customerId,
+            ...(breached ? { reason: "temperature_breach" } : {}),
+          }),
+        }
+      );
+      if (!statusRes.ok) throw new Error("Failed to update delivery status");
+
+      if (breached) {
+        toast({
+          title: `⚠️ Temperature breach — Order #${job.orderId} cancelled`,
+          description: `Final ${finalTemp}°C is outside allowed range (${minTemp ?? "—"}°C – ${maxTemp ?? "—"}°C).`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: `✅ Order #${job.orderId} delivered successfully`,
+          description: `Final ${finalTemp}°C is within range.`,
+        });
+      }
+
+      await loadJobs();
+    } catch (err: any) {
       toast({
-        title: `⚠️ Temperature breach reported for Order #${id}`,
-        description: `Recorded temperature: ${temperature}°C`,
+        title: "Error processing temperature",
+        description: err?.message ?? "Unknown error",
         variant: "destructive",
       });
-      await fetchOrders();
-    } catch {
-      toast({ title: "Failed to report breach", variant: "destructive" });
-    }
-  };
-
-  const isFinal = (status: string) =>
-    status === "DELIVERED" || status === "CANCELLED" || status === "FAILED_TEMP_BREACH";
-
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case "DELIVERED": return "bg-green-100 text-green-700";
-      case "CANCELLED": return "bg-red-100 text-red-700";
-      case "FAILED_TEMP_BREACH": return "bg-orange-100 text-orange-700";
-      case "IN_TRANSIT": return "bg-blue-100 text-blue-700";
-      case "SCHEDULED": return "bg-purple-100 text-purple-700";
-      default: return "bg-muted text-muted-foreground";
     }
   };
 
@@ -282,58 +471,43 @@ const MyDeliveries = () => {
                 <TableRow>
                   <TableHead>Order ID</TableHead>
                   <TableHead>Customer ID</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Scheduled Date</TableHead>
-                  <TableHead>Total</TableHead>
+                  <TableHead>Address</TableHead>
+                  <TableHead>Delivery Date</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Temperature</TableHead>
-                  <TableHead className="text-right">Update Status</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Temperature (Init / Final)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
-                  <TableRow key={order.ID}>
-                    <TableCell className="font-medium">#{order.ID}</TableCell>
-                    <TableCell>{order.CustomerID}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {order.OrderItems.length} item(s)
+                {jobs.map((job) => (
+                  <TableRow key={job.id}>
+                    <TableCell className="font-medium">#{job.orderId}</TableCell>
+                    <TableCell>{job.customerId}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
+                      {job.address}
                     </TableCell>
-                    <TableCell>{order.ScheduledDate || "—"}</TableCell>
-                    <TableCell>${order.TotalPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-sm">
+                      {job.deliveryDate
+                        ? new Date(job.deliveryDate).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusBadgeClass(order.OrderStatus)}`}>
-                        {order.OrderStatus.replace(/_/g, " ")}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}>
+                        {job.deliveryStatus.replace(/_/g, " ")}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <TemperatureCell order={order} onBreach={reportBreach} />
+                      <StartDeliveryCell job={job} onStart={handleStartDelivery} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      {!isFinal(order.OrderStatus) && (
-                        <Select onValueChange={(v) => updateStatus(order.ID, v)}>
-                          <SelectTrigger className="w-[150px]">
-                            <SelectValue placeholder="Update..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {statusFlow
-                              .filter(
-                                (s) =>
-                                  statusFlow.indexOf(s) > statusFlow.indexOf(order.OrderStatus)
-                              )
-                              .map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                    <TableCell>
+                      <TemperatureCell job={job} onSave={handleTemperatureSave} />
                     </TableCell>
                   </TableRow>
                 ))}
-                {orders.length === 0 && (
+
+                {jobs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No deliveries assigned yet
                     </TableCell>
                   </TableRow>
@@ -347,7 +521,7 @@ const MyDeliveries = () => {
   );
 };
 
-/* ─── Driver Dashboard ─── */
+// ── Driver Dashboard ──────────────────────────────────────────────────────────
 const DriverDashboard = () => {
   const { user, role } = useAuth();
   if (!user || role !== "driver") return <Navigate to="/login" />;
@@ -355,7 +529,7 @@ const DriverDashboard = () => {
   return (
     <DashboardLayout navItems={navItems} title="Driver Portal">
       <Routes>
-        <Route index element={<AvailableOrders />} />
+        <Route index element={<AvailableJobs />} />
         <Route path="deliveries" element={<MyDeliveries />} />
       </Routes>
     </DashboardLayout>

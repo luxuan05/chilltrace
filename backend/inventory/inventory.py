@@ -7,10 +7,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 from sqlalchemy.engine.url import make_url
 
-app = Flask(__name__)
-
 from flask_cors import CORS
-CORS(app)
+app = Flask(__name__)
 
 # Read from environment variables
 # DATABASE_URL = os.getenv('DATABASE_URL')
@@ -44,6 +42,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+CORS(app)
 
 db = SQLAlchemy(app)
 
