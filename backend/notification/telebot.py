@@ -12,8 +12,7 @@ Usage (customer side):
 
 import asyncio
 import os
-import pymysql
-import pymysql.cursors
+import requests
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -27,82 +26,38 @@ from telegram.ext import (
 from dotenv import load_dotenv
 
 load_dotenv()  # Load .env file into os.environ
+BUYER_SERVICE_URL = os.getenv("BUYER_SERVICE_URL", "http://localhost:5012")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-# ── MySQL config ──────────────────────────────────────────────────────────────
-DB_HOST     = os.getenv("DB_HOST", "localhost")
-DB_PORT     = int(os.getenv("DB_PORT", 3306))
-DB_USER     = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME     = os.getenv("DB_NAME", "your_database")
 
 # ── Conversation state ────────────────────────────────────────────────────────
 WAITING_FOR_BUYER_ID = 0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Database helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_connection():
-    """Create and return a new MySQL connection."""
-    return pymysql.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME,
-        cursorclass=pymysql.cursors.DictCursor,
-        autocommit=False,
-    )
-
-
 def buyer_exists(buyer_id: str) -> dict:
-    """
-    Check if the buyerID exists in the Buyer table.
-    Returns buyer info dict if found, None if not found.
-    """
     try:
-        conn = get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT ID, CompanyName, Email FROM Buyer WHERE ID = %s",
-                (buyer_id,)
-            )
-            result = cursor.fetchone()
-        conn.close()
-
-        if result:
+        response = requests.get(f"{BUYER_SERVICE_URL}/buyer/{buyer_id}", timeout=10)
+        if response.status_code == 200:
+            data = response.json()
             return {
-                "id": result["ID"],
-                "company_name": result["CompanyName"] or "Customer",
-                "email": result["Email"],
+                "id":           data.get("ID"),
+                "company_name": data.get("CompanyName") or "Customer",
+                "email":        data.get("Email"),
             }
         return None
-
     except Exception as e:
         print(f"Error checking buyer existence: {e}")
         return None
 
 
 def save_chat_id(buyer_id: str, chat_id: int) -> bool:
-    """
-    Update the Buyer table to store ChatID for the given buyerID.
-    """
     try:
-        conn = get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE Buyer SET ChatID = %s WHERE ID = %s",
-                (chat_id, buyer_id)
-            )
-            rows_affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-
-        return rows_affected > 0
-
+        response = requests.put(
+            f"{BUYER_SERVICE_URL}/buyer/{buyer_id}",
+            json={"ChatID": str(chat_id)},
+            timeout=10,
+        )
+        return response.status_code == 200
     except Exception as e:
         print(f"Error saving ChatID: {e}")
         return False

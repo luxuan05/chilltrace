@@ -28,6 +28,7 @@ services:
     build:
       context: ..
       dockerfile: notification/Dockerfile
+    restart: always
     depends_on:
       - rabbitmq
     env_file:

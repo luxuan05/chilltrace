@@ -170,11 +170,19 @@ def receivePayment():
 
         receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nDelivery Address: {address}\nThank you!"
         
+        # Fetch buyer email and ChatID for notification
+        buyer_result, buyer_status = invoke_http(
+            'http://localhost:5012/buyer/' + str(customerID), method='GET'
+        )
+        recipient_email = buyer_result.get("Email", "") if buyer_status == 200 else ""
+        chat_id         = buyer_result.get("ChatID", "") if buyer_status == 200 else ""
+
         print("Publish message to AMQP Exchange for Notification")
         message = {
-            "buyerID": customerID,
-            "subject": "Order " + str(orderID),
-            "body": receipt
+            "recipient_email": recipient_email,
+            "chat_id":         chat_id,
+            "subject":         "Order " + str(orderID),
+            "body":            receipt
         }
 
         message_body = json.dumps(message)
