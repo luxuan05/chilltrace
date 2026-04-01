@@ -34,15 +34,6 @@ def publish_notification(routing_key: str, payload: dict):
         print(f"[AMQP] Failed to publish notification: {e}")
 
 
-
-
-# ---------------------------------------------------------------------------
-# PUT /delivery_job/<order_id>/status
-#
-# Body: { "status": "DELIVERED"|"CANCELLED", "customer_id": int,
-#         "reason": "temperature_breach" }
-#
-# ---------------------------------------------------------------------------
 @app.route("/delivery_job/<int:order_id>/status", methods=["PUT"])
 def update_delivery_job_status(order_id):
     data = request.get_json()
@@ -59,8 +50,7 @@ def update_delivery_job_status(order_id):
 
     errors = []
 
-
-    # Step 2 — update OrderStatus on Orders table
+    # Update OrderStatus on Orders table
     if order_id:
         try:
             order_status = (
@@ -79,7 +69,7 @@ def update_delivery_job_status(order_id):
         except requests.RequestException as e:
             errors.append(f"Could not reach Order service: {e}")
 
-    # Step 3 — AMQP notification
+    # AMQP notification
     if new_status == "CANCELLED" and reason == "temperature_breach":
         publish_notification(
             routing_key="notification.order.cancelled",

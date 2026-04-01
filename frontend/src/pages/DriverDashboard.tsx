@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle } from "lucide-react";
+import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle, RefreshCw } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 const ORDER_SERVICE_URL           = "http://localhost:5002";
 const INVENTORY_SERVICE_URL       = "http://localhost:5001";
 const UPDATE_DELIVERY_SERVICE_URL = "http://localhost:5008";
-
-// DeliveryAPI — GET and PUT both use camelCase keys.
-// PUT /delivery/{orderId}/ requires ALL fields (full object, not partial).
-const DELIVERY_API = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
+const DELIVERY_API                = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const navItems = [
@@ -26,7 +23,7 @@ const navItems = [
   { label: "My Deliveries",  path: "/driver/deliveries", icon: <Truck className="h-4 w-4" /> },
 ];
 
-// ── Types — camelCase matching actual API response ────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface DeliveryJob {
   id: number;
   orderId: number;
@@ -39,34 +36,45 @@ interface DeliveryJob {
   finalTemperature?: number | null;
 }
 
-// ── Badge helper ──────────────────────────────────────────────────────────────
-function getStatusBadgeClass(status: string) {
-  switch ((status ?? "").toUpperCase()) {
-    case "DELIVERED":          return "bg-green-100 text-green-700 border-green-200";
-    case "CANCELLED":          return "bg-red-100 text-red-700 border-red-200";
-    case "FAILED_TEMP_BREACH": return "bg-orange-100 text-orange-700 border-orange-200";
-    case "IN_TRANSIT":         return "bg-blue-100 text-blue-700 border-blue-200";
-    case "SCHEDULED":          return "bg-purple-100 text-purple-700 border-purple-200";
-    case "ACCEPTED":           return "bg-yellow-100 text-yellow-700 border-yellow-200";
-    default:                   return "bg-muted text-muted-foreground";
+// ── In-memory cache ───────────────────────────────────────────────────────────
+// Shared across AvailableJobs and MyDeliveries so navigating between tabs
+// never triggers a second OutSystems round-trip.
+let _cache: DeliveryJob[] | null = null;
+let _cachePromise: Promise<DeliveryJob[]> | null = null; // deduplicate concurrent fetches
+
+function patchCache(id: number, partial: Partial<DeliveryJob>) {
+  if (_cache) {
+    _cache = _cache.map((d) => (d.id === id ? { ...d, ...partial } : d));
   }
 }
 
-// ── Fetch ALL deliveries via GET /delivery/ ───────────────────────────────────
-async function fetchAllDeliveries(): Promise<DeliveryJob[]> {
-  const res = await fetch(`${DELIVERY_API}/delivery/`);
-  if (!res.ok) throw new Error("Failed to fetch deliveries");
-  const data = await res.json();
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.Deliveries)) return data.Deliveries;
-  if (Array.isArray(data.deliveries)) return data.deliveries;
-  return [];
+async function fetchAllDeliveries(force = false): Promise<DeliveryJob[]> {
+  // Return cache immediately if available and not forcing a refresh
+  if (!force && _cache) return _cache;
+
+  // If a fetch is already in-flight, reuse it instead of sending a duplicate request
+  if (!force && _cachePromise) return _cachePromise;
+
+  _cachePromise = (async () => {
+    const res = await fetch(`${DELIVERY_API}/delivery/`);
+    if (!res.ok) throw new Error("Failed to fetch deliveries");
+    const data = await res.json();
+    const list: DeliveryJob[] = Array.isArray(data)
+      ? data
+      : (data.Deliveries ?? data.deliveries ?? []);
+    _cache = list;
+    _cachePromise = null;
+    return list;
+  })();
+
+  return _cachePromise;
 }
 
-// ── Fetch single delivery by orderId ─────────────────────────────────────────
+// Kick off a warm-up fetch as soon as this module loads so OutSystems is
+// already awake by the time the user sees the dashboard.
+fetchAllDeliveries();
 
-// ── PUT delivery — always sends the full object to satisfy OutSystems ─────────
-// Pass the current job directly to skip a redundant GET round-trip.
+// ── PUT delivery ──────────────────────────────────────────────────────────────
 async function putDelivery(
   current: DeliveryJob,
   partial: Partial<DeliveryJob>
@@ -80,14 +88,17 @@ async function putDelivery(
     finalTemperature:   current.finalTemperature   ?? 0,
     ...partial,
   };
-  return fetch(`${DELIVERY_API}/delivery/${current.orderId}/`, {
+  const res = await fetch(`${DELIVERY_API}/delivery/${current.id}/`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(full),
   });
+  // Keep cache in sync so subsequent reads don't need a re-fetch
+  if (res.ok) patchCache(current.id, partial);
+  return res;
 }
 
-// ── Fetch strictest temp range for an order ───────────────────────────────────
+// ── Temp range ────────────────────────────────────────────────────────────────
 async function fetchTempRangeForOrder(
   orderId: number
 ): Promise<{ minTemp: number | null; maxTemp: number | null }> {
@@ -121,34 +132,85 @@ async function fetchTempRangeForOrder(
   return { minTemp, maxTemp };
 }
 
+// ── Badge helper ──────────────────────────────────────────────────────────────
+function getStatusBadgeClass(status: string) {
+  switch ((status ?? "").toUpperCase()) {
+    case "DELIVERED":          return "bg-green-100 text-green-700 border-green-200";
+    case "CANCELLED":          return "bg-red-100 text-red-700 border-red-200";
+    case "FAILED_TEMP_BREACH": return "bg-orange-100 text-orange-700 border-orange-200";
+    case "IN_TRANSIT":         return "bg-blue-100 text-blue-700 border-blue-200";
+    case "SCHEDULED":          return "bg-purple-100 text-purple-700 border-purple-200";
+    case "ACCEPTED":           return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    default:                   return "bg-muted text-muted-foreground";
+  }
+}
+
+// ── Skeleton loaders ──────────────────────────────────────────────────────────
+const CardSkeleton = () => (
+  <div className="space-y-4">
+    {[1, 2, 3].map((i) => (
+      <Card key={i}>
+        <CardContent className="p-5">
+          <div className="animate-pulse space-y-3">
+            <div className="flex gap-3">
+              <div className="h-5 w-24 bg-muted rounded" />
+              <div className="h-5 w-20 bg-muted rounded-full" />
+            </div>
+            <div className="h-4 w-48 bg-muted rounded" />
+            <div className="h-4 w-32 bg-muted rounded" />
+          </div>
+        </CardContent>
+      </Card>
+    ))}
+  </div>
+);
+
+const TableSkeleton = () => (
+  <div className="animate-pulse space-y-3 p-6">
+    {[1, 2, 3, 4].map((i) => (
+      <div key={i} className="flex gap-4">
+        <div className="h-4 w-16 bg-muted rounded" />
+        <div className="h-4 w-16 bg-muted rounded" />
+        <div className="h-4 w-40 bg-muted rounded" />
+        <div className="h-4 w-24 bg-muted rounded" />
+        <div className="h-4 w-20 bg-muted rounded-full" />
+      </div>
+    ))}
+  </div>
+);
+
 // ── Available Jobs ────────────────────────────────────────────────────────────
 const AvailableJobs = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [jobs, setJobs]       = useState<DeliveryJob[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
+  const [loading, setLoading]       = useState(!_cache); // skip spinner if cache is already warm
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadJobs = async () => {
-    setLoading(true);
+  const loadJobs = useCallback(async (force = false) => {
+    if (force) setRefreshing(true);
+    else if (!_cache) setLoading(true);
     try {
-      const all = await fetchAllDeliveries();
-      // Available = no driver assigned (absent/null/0) AND status SCHEDULED
+      const all = await fetchAllDeliveries(force);
       setJobs(
         all.filter(
-          (d) =>
-            !d.driver &&
-            (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED"
+          (d) => !d.driver && (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED"
         )
       );
     } catch (err: unknown) {
-      toast({ title: "Failed to load available jobs", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      toast({
+        title: "Failed to load available jobs",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [toast]);
 
-  useEffect(() => { loadJobs(); }, []);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   const acceptJob = async (job: DeliveryJob) => {
     if (!user) return;
@@ -158,19 +220,37 @@ const AvailableJobs = () => {
         deliveryStatus: "ACCEPTED",
       });
       if (!res.ok) throw new Error(await res.text());
+      // Remove from list immediately — cache is already patched by putDelivery
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
       toast({ title: `Job accepted — Order #${job.orderId}` });
       navigate("/driver/deliveries");
     } catch (err: unknown) {
-      toast({ title: "Failed to accept job", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      toast({
+        title: "Failed to accept job",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     }
   };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold text-foreground">Available Delivery Jobs</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-foreground">Available Delivery Jobs</h1>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={refreshing}
+          onClick={() => loadJobs(true)}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </Button>
+      </div>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading jobs...</p>
+        <CardSkeleton />
       ) : (
         <div className="grid gap-4">
           {jobs.map((job) => (
@@ -236,7 +316,6 @@ const TemperatureCell = ({ job, onSave }: TempCellProps) => {
   );
   const [saving, setSaving] = useState(false);
 
-  // Terminal states — read-only
   const isFinal = ["DELIVERED", "CANCELLED", "FAILED_TEMP_BREACH"].includes(status);
   if (isFinal) {
     return (
@@ -247,7 +326,6 @@ const TemperatureCell = ({ job, onSave }: TempCellProps) => {
     );
   }
 
-  // Not yet IN_TRANSIT — locked
   if (status !== "IN_TRANSIT") {
     return (
       <span className="text-xs text-muted-foreground italic">
@@ -256,8 +334,6 @@ const TemperatureCell = ({ job, onSave }: TempCellProps) => {
     );
   }
 
-  // OutSystems silently stores NULL when it receives exactly 0.
-  // Substitute 0 -> 0.01 so the value is preserved in the DB.
   const sanitiseTemp = (val: string): number => {
     const n = parseFloat(val);
     return n === 0 ? 0.01 : n;
@@ -359,34 +435,46 @@ const StartDeliveryCell = ({ job, onStart }: StartDeliveryCellProps) => {
 const MyDeliveries = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [jobs, setJobs]       = useState<DeliveryJob[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
+  const [loading, setLoading]       = useState(!_cache); // skip spinner if cache is already warm
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadJobs = async () => {
-    setLoading(true);
+  const loadJobs = useCallback(async (force = false) => {
+    if (force) setRefreshing(true);
+    else if (!_cache) setLoading(true);
     try {
-      const all = await fetchAllDeliveries();
+      const all = await fetchAllDeliveries(force);
       setJobs(all.filter((d) => d.driver === user?.ID));
     } catch (err: unknown) {
-      toast({ title: "Failed to load deliveries", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      toast({
+        title: "Failed to load deliveries",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [toast, user?.ID]);
 
-  useEffect(() => { loadJobs(); }, []);
+  useEffect(() => { loadJobs(); }, [loadJobs]);
 
   // ── ACCEPTED → IN_TRANSIT ───────────────────────────────────────────────
   const handleStartDelivery = async (job: DeliveryJob) => {
     try {
-      const res = await putDelivery(job, {
-        deliveryStatus: "IN_TRANSIT",
-      });
+      const res = await putDelivery(job, { deliveryStatus: "IN_TRANSIT" });
       if (!res.ok) throw new Error(await res.text());
+      // Update local state directly — cache already patched by putDelivery
+      setJobs((prev) =>
+        prev.map((j) => (j.id === job.id ? { ...j, deliveryStatus: "IN_TRANSIT" } : j))
+      );
       toast({ title: `Order #${job.orderId} is now In Transit` });
-      await loadJobs();
     } catch (err: unknown) {
-      toast({ title: "Failed to start delivery", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
+      toast({
+        title: "Failed to start delivery",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     }
   };
 
@@ -397,20 +485,14 @@ const MyDeliveries = () => {
     finalTemp: number
   ) => {
     try {
-      // 1. Fetch strictest temp range from inventory
       const { minTemp, maxTemp } = await fetchTempRangeForOrder(job.orderId);
 
-      // 2. Determine breach
       const breached =
         (minTemp !== null && finalTemp < minTemp) ||
         (maxTemp !== null && finalTemp > maxTemp);
 
       const newDeliveryStatus = breached ? "CANCELLED" : "DELIVERED";
 
-      // 3. Save temperatures + final status in ONE PUT so nothing overwrites them.
-      //    The composite service (port 5008) also calls PUT /delivery/{orderId}/
-      //    internally with only DeliveryStatus, which would blank out temperatures
-      //    if we saved them in a separate earlier call.
       const tempRes = await putDelivery(job, {
         initialTemperature: initTemp,
         finalTemperature:   finalTemp,
@@ -418,10 +500,6 @@ const MyDeliveries = () => {
       });
       if (!tempRes.ok) throw new Error("Failed to save temperatures");
 
-      // 4. Call Update Delivery Status composite service (port 5008)
-      //    Updates OrderStatus + sends AMQP notification
-      //    (DeliveryStatus already updated above — port 5008's internal PUT
-      //     will re-set it to the same value, which is harmless)
       const statusRes = await fetch(
         `${UPDATE_DELIVERY_SERVICE_URL}/delivery_job/${job.orderId}/status`,
         {
@@ -436,6 +514,15 @@ const MyDeliveries = () => {
       );
       if (!statusRes.ok) throw new Error("Failed to update delivery status");
 
+      // Update local state directly — cache already patched by putDelivery
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === job.id
+            ? { ...j, initialTemperature: initTemp, finalTemperature: finalTemp, deliveryStatus: newDeliveryStatus }
+            : j
+        )
+      );
+
       if (breached) {
         toast({
           title: `⚠️ Temperature breach — Order #${job.orderId} cancelled`,
@@ -448,8 +535,6 @@ const MyDeliveries = () => {
           description: `Final ${finalTemp}°C is within range.`,
         });
       }
-
-      await loadJobs();
     } catch (err: unknown) {
       toast({
         title: "Error processing temperature",
@@ -461,11 +546,23 @@ const MyDeliveries = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold text-foreground">My Deliveries</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-foreground">My Deliveries</h1>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={refreshing}
+          onClick={() => loadJobs(true)}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </Button>
+      </div>
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <p className="text-sm text-muted-foreground p-6">Loading deliveries...</p>
+            <TableSkeleton />
           ) : (
             <Table>
               <TableHeader>
