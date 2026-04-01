@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
@@ -125,6 +125,7 @@ async function fetchTempRangeForOrder(
 const AvailableJobs = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [jobs, setJobs]       = useState<DeliveryJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -140,8 +141,8 @@ const AvailableJobs = () => {
             (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED"
         )
       );
-    } catch (err: any) {
-      toast({ title: "Failed to load available jobs", description: err?.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to load available jobs", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -158,9 +159,9 @@ const AvailableJobs = () => {
       });
       if (!res.ok) throw new Error(await res.text());
       toast({ title: `Job accepted — Order #${job.orderId}` });
-      await loadJobs();
-    } catch (err: any) {
-      toast({ title: "Failed to accept job", description: err?.message, variant: "destructive" });
+      navigate("/driver/deliveries");
+    } catch (err: unknown) {
+      toast({ title: "Failed to accept job", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 
@@ -366,8 +367,8 @@ const MyDeliveries = () => {
     try {
       const all = await fetchAllDeliveries();
       setJobs(all.filter((d) => d.driver === user?.ID));
-    } catch (err: any) {
-      toast({ title: "Failed to load deliveries", description: err?.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to load deliveries", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -384,8 +385,8 @@ const MyDeliveries = () => {
       if (!res.ok) throw new Error(await res.text());
       toast({ title: `Order #${job.orderId} is now In Transit` });
       await loadJobs();
-    } catch (err: any) {
-      toast({ title: "Failed to start delivery", description: err?.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to start delivery", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 
@@ -449,10 +450,10 @@ const MyDeliveries = () => {
       }
 
       await loadJobs();
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
         title: "Error processing temperature",
-        description: err?.message ?? "Unknown error",
+        description: (err instanceof Error ? err.message : String(err)) ?? "Unknown error",
         variant: "destructive",
       });
     }
