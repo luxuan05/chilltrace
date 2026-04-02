@@ -139,8 +139,9 @@ def accept_delivery(delivery_id):
                 "deliveryDate": delivery.get("deliveryDate", ""),
                 "deliveryStatus": DELIVERY_STATUS_ON_ACCEPT,
                 "driver": driver_id,
-                "initialTemperature": delivery.get("initialTemperature", 0.1),
-                "finalTemperature": delivery.get("finalTemperature", 0.1),
+                # No default value
+                "initialTemperature": delivery.get("initialTemperature"),
+                "finalTemperature": delivery.get("finalTemperature"),
             },
         )
 
