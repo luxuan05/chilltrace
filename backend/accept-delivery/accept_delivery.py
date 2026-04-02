@@ -16,6 +16,7 @@ load_dotenv()
 
 DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://localhost:5003")
 ORDER_SERVICE_URL = os.getenv("ORDER_SERVICE_URL", "http://localhost:5002")
+PORT = int(os.getenv("PORT", "5007"))
 
 # Driver acceptance behavior:
 # - delivery-service: transition deliveryStatus (default ACCEPTED) and assign `driver`
@@ -47,8 +48,8 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
-@app.route("/deliveries/<int:order_id>/accept", methods=["PUT"])
-def accept_delivery(order_id):
+@app.route("/deliveries/<int:delivery_id>/accept", methods=["PUT"])
+def accept_delivery(delivery_id):
     """
     Driver accepts a delivery job.
 
@@ -91,26 +92,48 @@ def accept_delivery(order_id):
         )
 
     try:
-        delivery = get_delivery(order_id)
+        # IMPORTANT: DeliveryAPI uses deliveryId, not orderId.
+        delivery = get_delivery(delivery_id)
         current_delivery_status = str(delivery.get("deliveryStatus", "")).upper()
 
         if current_delivery_status not in DELIVERY_ACCEPTABLE_CURRENT_STATUSES:
             return jsonify(
                 {
                     "error": "Delivery cannot be accepted.",
-                    "order_id": order_id,
+                    "deliveryId": delivery_id,
                     "current_delivery_status": current_delivery_status or None,
                     "required_statuses": sorted(DELIVERY_ACCEPTABLE_CURRENT_STATUSES),
                 }
             ), 409
 
+        # Delivery record contains the orderId used by order-service.
+        order_id = delivery.get("orderId")
+        if order_id is None:
+            return jsonify(
+                {
+                    "error": "Delivery record missing orderId; cannot accept delivery.",
+                    "deliveryId": delivery_id,
+                }
+            ), 502
+
+        try:
+            order_id = int(order_id)
+        except (TypeError, ValueError):
+            return jsonify(
+                {
+                    "error": "Delivery record has invalid orderId; cannot accept delivery.",
+                    "deliveryId": delivery_id,
+                    "orderId": order_id,
+                }
+            ), 502
+
         # Read order to verify it exists and to derive CustomerID for notifications.
         order = get_order(order_id)
         customer_id = order.get("CustomerID") or order.get("CustomerId") or order.get("customer_id")
 
-        # Assign driver + advance delivery state in the external DeliveryAPI.
+        # Assign driver + advance delivery state in the external DeliveryAPI (deliveryId).
         assign_result = update_delivery(
-            order_id,
+            delivery_id,
             {
                 "address": delivery.get("address", ""),
                 "deliveryDate": delivery.get("deliveryDate", ""),
@@ -137,7 +160,8 @@ def accept_delivery(order_id):
         return jsonify(
             {
                 "message": "Delivery accepted successfully.",
-                "order_id": order_id,
+                "deliveryId": delivery_id,
+                "orderId": order_id,
                 "delivery_status": current_delivery_status,
                 "order_status": ORDER_STATUS_ON_ACCEPT,
                 "delivery_assigned_status": DELIVERY_STATUS_ON_ACCEPT,

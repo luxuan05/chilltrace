@@ -16,6 +16,8 @@ const ORDER_SERVICE_URL           = "http://localhost:5002";
 const INVENTORY_SERVICE_URL       = "http://localhost:5001";
 const UPDATE_DELIVERY_SERVICE_URL = "http://localhost:5008";
 const DELIVERY_API                = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
+const ACCEPT_DELIVERY_SERVICE_URL =
+  import.meta.env.VITE_ACCEPT_DELIVERY_SERVICE_URL ?? "http://localhost:5007";
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const navItems = [
@@ -215,11 +217,20 @@ const AvailableJobs = () => {
   const acceptJob = async (job: DeliveryJob) => {
     if (!user) return;
     try {
-      const res = await putDelivery(job, {
-        driver:         user.ID,
-        deliveryStatus: "ACCEPTED",
-      });
+      // IMPORTANT: DeliveryAPI uses deliveryId (= job.id), while order-service uses orderId (= job.orderId).
+      // We accept via backend so it can update DeliveryAPI + order-service consistently.
+      const res = await fetch(
+        `${ACCEPT_DELIVERY_SERVICE_URL}/deliveries/${job.id}/accept`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driverId: user.ID }),
+        }
+      );
       if (!res.ok) throw new Error(await res.text());
+
+      // Keep frontend cache consistent with the external DeliveryAPI updates.
+      patchCache(job.id, { driver: user.ID, deliveryStatus: "ACCEPTED" });
       // Remove from list immediately — cache is already patched by putDelivery
       setJobs((prev) => prev.filter((j) => j.id !== job.id));
       toast({ title: `Job accepted — Order #${job.orderId}` });
