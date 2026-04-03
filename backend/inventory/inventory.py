@@ -20,7 +20,6 @@ load_dotenv(BASE_DIR / ".env", override=True)   # single call, force local .env
 
 DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip().strip('"').strip("'")
 SSL_CA = (os.getenv("SSL_CA") or "").strip().strip('"').strip("'")
-PORT = int((os.getenv("PORT") or "5000").strip())
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL missing in backend/inventory/.env")
@@ -33,13 +32,19 @@ except Exception:
 
 # Configure Flask app
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {
-        'ssl': {
-            'ca': SSL_CA
-        }
+if SSL_CA and os.path.exists(SSL_CA):
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {
+            'ssl': {
+                'ca': SSL_CA
+            }
+        },
+        'pool_pre_ping': True,
     }
-}
+else:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_pre_ping': True,
+    }
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 

@@ -3,8 +3,18 @@ from flask_cors import CORS
 import json
 import pika
 import sys, os
+from dotenv import load_dotenv
+from pathlib import Path
 
 from invokes import invoke_http
+
+# Load environment
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
+
+# RabbitMQ config
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST") or os.environ.get("rabbit_host") or "rabbitmq"
+RABBITMQ_PORT = int(os.environ.get("RABBITMQ_PORT") or os.environ.get("rabbit_port") or 5672)
 
 app = Flask(__name__)
 CORS(app)
@@ -127,7 +137,7 @@ def getPaymentByOrder(order_id):
     print("Invoking payment microservice to get intent_id...")
     try:
         import requests as req
-        response = req.get('http://localhost:5004/payment/order/' + str(order_id), timeout=10)
+        response = req.get('http://payment:5004/payment/order/' + str(order_id), timeout=10)
         if response.status_code >= 400:
             return None, response.status_code
         # payment service returns plain string (not JSON)
@@ -144,7 +154,7 @@ def getBuyer(customer_id):
     print("Invoking buyer microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5012/buyer/' + str(customer_id),
+            'http://buyer:5012/buyer/' + str(customer_id),
             method='GET',
         )
         if http_status >= 400:
@@ -162,7 +172,7 @@ def cancelOrder(order_id):
     print("Invoking order microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5002/orders/' + str(order_id) + '/cancel',
+            'http://order:5002/orders/' + str(order_id) + '/cancel',
             method='PUT',
         )
         if http_status >= 400:
@@ -190,7 +200,7 @@ def releaseInventory(order_items):
 
             # GET current stock
             current, http_status = invoke_http(
-                'http://localhost:5001/inventory/check-availability/' + str(item_id),
+                'http://inventory:5001/inventory/check-availability/' + str(item_id),
                 method='GET',
             )
             if http_status != 200:
@@ -200,7 +210,7 @@ def releaseInventory(order_items):
 
             # PUT new absolute qty back
             update_result, http_status = invoke_http(
-                'http://localhost:5001/api/inventory/items/' + str(item_id),
+                'http://inventory:5001/api/inventory/items/' + str(item_id),
                 method='PUT',
                 json={"quantity": new_qty},
             )
@@ -223,7 +233,7 @@ def refundPayment(intent_id):
     print("Invoking payment microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5004/payment/refund',
+            'http://payment:5004/payment/refund',
             method='POST',
             json={"intent_id": intent_id},
         )
@@ -282,8 +292,8 @@ def publishNotification(recipient_email, subject, body):
     try:
         connection = pika.BlockingConnection(
             pika.ConnectionParameters(
-                host="localhost",
-                port=5672,
+                host=RABBITMQ_HOST,
+                port=RABBITMQ_PORT,
                 heartbeat=300,
                 blocked_connection_timeout=300,
             )

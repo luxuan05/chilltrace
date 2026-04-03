@@ -1,16 +1,15 @@
 volumes:
   rabbitmq_data:
     name: esd_rabbitmq_data
- 
+
 networks:
   esd-net:
     driver: bridge
     name: esd-net
- 
+
 services:
- 
   ####################################
-  # RabbitMQ: The messaging broker   
+  # RabbitMQ: The messaging broker
   ####################################
   rabbitmq:
     image: rabbitmq:3-management
@@ -27,7 +26,7 @@ services:
   notification:
     build:
       context: ..
-      dockerfile: notification/Dockerfile
+      dockerfile: notification.dockerfile
     restart: always
     depends_on:
       - rabbitmq

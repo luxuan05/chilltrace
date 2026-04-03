@@ -2,7 +2,7 @@ import os
 import time
 import requests
 
-ORDER_SERVICE_URL = os.getenv("ORDER_SERVICE_URL", "http://localhost:5002")
+ORDER_SERVICE_URL = os.getenv("ORDER_SERVICE_URL", "http://order:5002")
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", 30))
 
 
