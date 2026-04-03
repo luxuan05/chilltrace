@@ -1,9 +1,14 @@
 import json
 import os
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clients.delivery_client import get_delivery, update_delivery
 from clients.order_client import get_order, update_order_status
@@ -14,8 +19,8 @@ load_dotenv()
 
 # ---- Config -----------------------------------------------------------------
 
-DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://localhost:5003")
-ORDER_SERVICE_URL = os.getenv("ORDER_SERVICE_URL", "http://localhost:5002")
+DELIVERY_SERVICE_URL = os.getenv("DELIVERY_SERVICE_URL", "http://delivery:5003")
+ORDER_SERVICE_URL = os.getenv("ORDER_SERVICE_URL", "http://order:5002")
 PORT = int(os.getenv("PORT", "5007"))
 
 # Driver acceptance behavior:

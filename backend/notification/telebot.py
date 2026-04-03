@@ -26,7 +26,7 @@ from telegram.ext import (
 from dotenv import load_dotenv
 
 load_dotenv()  # Load .env file into os.environ
-BUYER_SERVICE_URL = os.getenv("BUYER_SERVICE_URL", "http://localhost:5012")
+BUYER_SERVICE_URL = os.getenv("BUYER_SERVICE_URL", "http://buyer:5012")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 

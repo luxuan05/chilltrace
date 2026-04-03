@@ -10,7 +10,7 @@ CORS(app)
 
 # --- Service URLs ---
 DELIVERY_SERVICE_URL = os.environ.get("DELIVERY_SERVICE_URL", "http://localhost:5003")
-ORDER_SERVICE_URL    = os.environ.get("ORDER_SERVICE_URL",    "http://localhost:5002")
+ORDER_SERVICE_URL    = os.environ.get("ORDER_SERVICE_URL",    "http://order:5002")
 RABBITMQ_HOST        = os.environ.get("RABBITMQ_HOST",        "localhost")
 RABBITMQ_EXCHANGE    = os.environ.get("RABBITMQ_EXCHANGE",    "notification")
 

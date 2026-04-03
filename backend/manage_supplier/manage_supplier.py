@@ -253,7 +253,7 @@ def cancel_buyer_order(supplier_id, order_id):
 def createSupplier(data):
     print("Invoking supplier microservice...")
     try:
-        result, http_status = invoke_http('http://localhost:5011/supplier', method='POST', json=data)
+        result, http_status = invoke_http('http://supplier:5011/supplier', method='POST', json=data)
         if http_status >= 400:
             return {"code": http_status, "message": "Create supplier failed", "details": result}, http_status
         return result, http_status
@@ -268,7 +268,7 @@ def createSupplier(data):
 def getSupplier(supplier_id):
     print("Invoking supplier microservice...")
     try:
-        result, http_status = invoke_http('http://localhost:5011/supplier/' + str(supplier_id), method='GET')
+        result, http_status = invoke_http('http://supplier:5011/supplier/' + str(supplier_id), method='GET')
         if http_status >= 400:
             return {"code": http_status, "message": "Get supplier failed", "details": result}, http_status
         return result, http_status
@@ -283,7 +283,7 @@ def getSupplier(supplier_id):
 def updateSupplier(supplier_id, data):
     print("Invoking supplier microservice...")
     try:
-        result, http_status = invoke_http('http://localhost:5011/supplier/' + str(supplier_id), method='PUT', json=data)
+        result, http_status = invoke_http('http://supplier:5011/supplier/' + str(supplier_id), method='PUT', json=data)
         if http_status >= 400:
             return {"code": http_status, "message": "Update supplier failed", "details": result}, http_status
         return result, http_status
@@ -298,7 +298,7 @@ def updateSupplier(supplier_id, data):
 def createInventoryItem(data):
     print("Invoking inventory microservice...")
     try:
-        result, http_status = invoke_http('http://localhost:5001/api/inventory/items', method='POST', json=data)
+        result, http_status = invoke_http('http://inventory:5001/api/inventory/items', method='POST', json=data)
         if http_status >= 400:
             return {"code": http_status, "message": "Create inventory item failed", "details": result}, http_status
         return result, http_status
@@ -314,7 +314,7 @@ def getSupplierInventory(supplier_id):
     print("Invoking inventory microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5001/api/inventory/items?supplier_id=' + str(supplier_id),
+            'http://inventory:5001/api/inventory/items?supplier_id=' + str(supplier_id),
             method='GET',
         )
         if http_status >= 400:
@@ -332,7 +332,7 @@ def getInventoryItem(item_id):
     print("Invoking inventory microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5001/inventory/items/' + str(item_id),
+            'http://inventory:5001/inventory/items/' + str(item_id),
             method='GET',
         )
         if http_status >= 400:
@@ -350,7 +350,7 @@ def updateInventoryItem(item_id, data):
     print("Invoking inventory microservice...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5001/api/inventory/items/' + str(item_id),
+            'http://inventory:5001/api/inventory/items/' + str(item_id),
             method='PUT',
             json=data,
         )
@@ -368,7 +368,7 @@ def updateInventoryItem(item_id, data):
 def getOrdersBySupplier(supplier_id):
     print("Invoking order microservice...")
     try:
-        result, http_status = invoke_http('http://localhost:5002/orders', method='GET')
+        result, http_status = invoke_http('http://order:5002/orders', method='GET')
         if http_status >= 400:
             return {"code": http_status, "message": "Get orders failed", "details": result}, http_status
 
@@ -388,7 +388,7 @@ def cancelBuyerOrder(order_id):
     print("Invoking cancel order composite service...")
     try:
         result, http_status = invoke_http(
-            'http://localhost:5009/cancelorder/' + str(order_id),
+            'http://cancel_order:5009/cancelorder/' + str(order_id),
             method='PUT',
             json={},
         )
