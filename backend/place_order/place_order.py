@@ -6,14 +6,16 @@ import sys, os
 import amqp_lib
 from os import environ
 from invokes import invoke_http
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 
 CORS(app)
 
 # RabbitMQ
-rabbit_host = environ.get("rabbit_host") or "localhost"
-rabbit_port = environ.get("rabbit_port") or 5672
+rabbit_host = environ.get("RABBITMQ_HOST") or "rabbitmq"
+rabbit_port = environ.get("RABBITMQ_PORT") or 5672
 exchange_name = environ.get("exchange_name") or "order_topic"
 exchange_type = environ.get("exchange_type") or "topic"
 
@@ -140,6 +142,7 @@ def place_order():
 
 @app.route('/placeorder/receive-payment-status', methods=['POST'])
 def receivePayment():
+    global connection, channel
     try:
         data = request.get_json(silent=True) or {}
 
@@ -186,6 +189,15 @@ def receivePayment():
         }
 
         message_body = json.dumps(message)
+
+        # Reconnect if channel/connection is closed
+        if not connection or connection.is_closed or channel.is_closed:
+            connection, channel = amqp_lib.connect(
+                hostname=rabbit_host,
+                port=rabbit_port,
+                exchange_name=exchange_name,
+                exchange_type=exchange_type,
+            )
 
         channel.basic_publish(
             exchange=exchange_name, routing_key='order.paid', body=message_body,

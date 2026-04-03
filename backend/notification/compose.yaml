@@ -33,5 +33,7 @@ services:
       - rabbitmq
     env_file:
       - ../.env
+    environment:
+        - rabbit_host=rabbitmq
     networks:
       - esd-net
