@@ -82,6 +82,39 @@ interface RawInventoryItem {
   max_temperature: number;
 }
 
+// Raw shapes returned by the backend APIs
+interface RawInventoryApiItem {
+  item_id: number;
+  name: string;
+}
+
+interface RawOrderItem {
+  ItemID: number;
+  Quantity: number;
+  UnitPrice: number;
+}
+
+interface RawOrder {
+  ID: number;
+  CustomerID: number;
+  SupplierId: number;
+  OrderStatus: string;
+  TotalPrice: number;
+  ScheduledDate: string;
+  OrderItems: RawOrderItem[];
+}
+
+interface PlaceOrderResult {
+  result?: {
+    data?: {
+      client_secret?: string;
+      OrderID?: number;
+    };
+  };
+  message?: string;
+  Error?: string;
+}
+
 // ── Step indicator ────────────────────────────────────────────────────────────
 const steps = ["Shop", "Cart & Details", "Payment", "Confirmed"];
 
@@ -162,7 +195,7 @@ const PlaceOrder = () => {
     const fetchSuppliers = async () => {
       try {
         const res = await fetch(`${SUPPLIER_SERVICE_URL}/supplier`);
-        const data = await res.json();
+        const data: Supplier[] = await res.json();
         setSuppliers(data);
       } catch {
         toast({ title: "Failed to load suppliers", variant: "destructive" });
@@ -181,7 +214,7 @@ const PlaceOrder = () => {
       setCart({});
       try {
         const res = await fetch(`${INVENTORY_SERVICE_URL}/api/inventory/items?supplier_id=${selectedSupplierId}`);
-        const data = await res.json();
+        const data: RawInventoryItem[] = await res.json();
         setInventory(data);
       } catch {
         toast({ title: "Failed to load inventory", variant: "destructive" });
@@ -281,7 +314,7 @@ const PlaceOrder = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const orderResult = await orderRes.json().catch(() => ({}));
+      const orderResult: PlaceOrderResult = await orderRes.json().catch(() => ({}));
 
       if (!orderRes.ok) {
         toast({
@@ -326,7 +359,7 @@ const PlaceOrder = () => {
         });
 
         if (!webhookRes.ok) {
-          const webhookResult = await webhookRes.json().catch(() => ({}));
+          const webhookResult: { error?: string } = await webhookRes.json().catch(() => ({}));
           toast({
             title: "Backend flow continuation failed",
             description: webhookResult?.error || "Payment succeeded but backend failed",
@@ -740,17 +773,17 @@ const OrderHistory = () => {
     const fetchLookups = async () => {
       try {
         const invRes = await fetch(`${INVENTORY_SERVICE_URL}/api/inventory/items`);
-        const invData = await invRes.json();
+        const invData: RawInventoryApiItem[] = await invRes.json();
         const iMap: Record<number, string> = {};
-        (Array.isArray(invData) ? invData : []).forEach((item: any) => { iMap[item.item_id] = item.name; });
+        (Array.isArray(invData) ? invData : []).forEach((item) => { iMap[item.item_id] = item.name; });
         setItemMap(iMap);
       } catch { console.warn("Could not fetch inventory lookup"); }
 
       try {
         const supRes = await fetch(`${SUPPLIER_SERVICE_URL}/supplier`);
-        const supData = await supRes.json();
+        const supData: Supplier[] = await supRes.json();
         const sMap: Record<number, string> = {};
-        (Array.isArray(supData) ? supData : []).forEach((s: any) => { sMap[s.ID] = s.CompanyName; });
+        (Array.isArray(supData) ? supData : []).forEach((s) => { sMap[s.ID] = s.CompanyName; });
         setSupplierMap(sMap);
       } catch { console.warn("Could not fetch supplier lookup"); }
     };
@@ -773,17 +806,17 @@ const OrderHistory = () => {
     if (!user?.ID) return;
     try {
       const res = await fetch(`${ORDER_SERVICE_URL}/orders`);
-      const data = await res.json();
+      const data: RawOrder[] = await res.json();
       const filtered = (Array.isArray(data) ? data : [])
-        .filter((o: any) => String(o.CustomerID) === String(user.ID))
-        .map((o: any) => ({
+        .filter((o) => String(o.CustomerID) === String(user.ID))
+        .map((o) => ({
           id: String(o.ID),
           buyerId: String(o.CustomerID),
           supplierId: String(o.SupplierId),
           status: mapStatus(o.OrderStatus),
           totalAmount: o.TotalPrice ?? 0,
           deliveryDate: o.ScheduledDate ?? "",
-          items: (o.OrderItems ?? []).map((i: any) => ({
+          items: (o.OrderItems ?? []).map((i) => ({
             inventoryId: String(i.ItemID),
             name: String(i.ItemID),
             qty: i.Quantity,

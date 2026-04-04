@@ -66,6 +66,33 @@ interface RawInventoryItem {
   max_temperature: number;
 }
 
+// Raw shapes returned by the backend APIs
+interface RawInventoryApiItem {
+  item_id: number;
+  name: string;
+}
+
+interface RawBuyer {
+  ID: number;
+  CompanyName: string;
+}
+
+interface RawOrderItem {
+  ItemID: number;
+  Quantity: number;
+  UnitPrice: number;
+}
+
+interface RawOrder {
+  ID: number;
+  CustomerID: number;
+  SupplierId: number;
+  OrderStatus: string;
+  TotalPrice: number;
+  ScheduledDate: string;
+  OrderItems: RawOrderItem[];
+}
+
 const emptyForm = {
   name: "", category: "", unit: "kg", price: "", quantity: "", min_temperature: "", max_temperature: "", description: "",
 };
@@ -329,9 +356,9 @@ const SupplierOrders = () => {
     const fetchLookups = async () => {
       try {
         const invRes  = await fetch(`${INVENTORY_SERVICE_URL}/api/inventory/items`);
-        const invData = await invRes.json();
+        const invData: RawInventoryApiItem[] = await invRes.json();
         const iMap: Record<number, string> = {};
-        (Array.isArray(invData) ? invData : []).forEach((item: any) => {
+        (Array.isArray(invData) ? invData : []).forEach((item) => {
           iMap[item.item_id] = item.name;
         });
         setItemMap(iMap);
@@ -341,9 +368,9 @@ const SupplierOrders = () => {
 
       try {
         const buyerRes  = await fetch(`${BUYER_SERVICE_URL}/buyer`);
-        const buyerData = await buyerRes.json();
+        const buyerData: RawBuyer[] = await buyerRes.json();
         const bMap: Record<number, string> = {};
-        (Array.isArray(buyerData) ? buyerData : []).forEach((b: any) => {
+        (Array.isArray(buyerData) ? buyerData : []).forEach((b) => {
           bMap[b.ID] = b.CompanyName;
         });
         setBuyerMap(bMap);
@@ -374,17 +401,17 @@ const SupplierOrders = () => {
     if (!user?.ID) return;
     try {
       const res  = await fetch(`${ORDER_SERVICE_URL}/orders`);
-      const data = await res.json();
+      const data: RawOrder[] = await res.json();
       const filtered = (Array.isArray(data) ? data : [])
-        .filter((o: any) => String(o.SupplierId) === String(user.ID))
-        .map((o: any) => ({
+        .filter((o) => String(o.SupplierId) === String(user.ID))
+        .map((o) => ({
           id:              String(o.ID),
           buyerId:         String(o.CustomerID),
           supplierId:      String(o.SupplierId),
           status:          mapStatus(o.OrderStatus),
           totalAmount:     o.TotalPrice ?? 0,
           deliveryDate:    o.ScheduledDate ?? "",
-          items: (o.OrderItems ?? []).map((i: any) => ({
+          items: (o.OrderItems ?? []).map((i) => ({
             inventoryId:  String(i.ItemID),
             name:         String(i.ItemID),
             qty:          i.Quantity,
