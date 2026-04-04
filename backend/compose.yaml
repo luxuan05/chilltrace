@@ -51,6 +51,7 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      PLACE_ORDER_SERVICE_URL: http://place_order:5006
     ports:
       - "5004:5004"
     networks:
@@ -102,6 +103,12 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      PAYMENT_SERVICE_URL: http://payment:5004
+      BUYER_SERVICE_URL: http://buyer:5012
+      
     ports:
       - "5006:5006"
     networks:
@@ -123,6 +130,8 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
     ports:
       - "5007:5007"
     networks:
@@ -142,6 +151,8 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
     ports:
       - "5008:5008"
     networks:
@@ -163,6 +174,10 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      PAYMENT_SERVICE_URL: http://payment:5004
+      BUYER_SERVICE_URL: http://buyer:5012
     ports:
       - "5009:5009"
     networks:
@@ -183,6 +198,10 @@ services:
     # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      SUPPLIER_SERVICE_URL: http://supplier:5011
+      CANCEL_ORDER_SERVICE_URL: http://cancel_order:5009
     ports:
       - "5010:5010"
     networks:
