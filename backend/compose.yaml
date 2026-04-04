@@ -219,3 +219,18 @@ services:
       - "5012:5012"
     networks:
       - esd-net
+
+  driver:
+    build:
+      context: .
+      dockerfile: ./driver/driver.dockerfile
+    image: quantumian/driver:esd
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5013:5013"
+    networks:
+      - esd-net
