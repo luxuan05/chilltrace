@@ -38,6 +38,7 @@ db = SQLAlchemy()
 db.init_app(app)
 
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+print(f"Stripe key: '{stripe.api_key}'")
 CURR = 'SGD'
 PLACE_ORDER_SERVICE_URL = os.getenv("PLACE_ORDER_SERVICE_URL") or "http://place_order:5006"
 
@@ -52,32 +53,37 @@ def normalize_payment_intent_id(value):
 
 
 def handle_successful_payment_intent(payment_intent):
-    metadata = payment_intent.get('metadata', {})
-    orderID = metadata.get('OrderID')
-    customerID = metadata.get('CustomerID')
-    scheduledDate = metadata.get('ScheduledDate')
-    address = metadata.get('Address')
-    orderItems = json.loads(metadata.get('OrderItems'))
+    try:
+        metadata = payment_intent.metadata
+        orderID = metadata['OrderID']
+        customerID = metadata['CustomerID']
+        scheduledDate = metadata['ScheduledDate']
+        address = metadata['Address']
+        orderItems = json.loads(metadata['OrderItems'])
 
-    payload = {
-        "OrderID": orderID,
-        "CustomerID": customerID,
-        "Amount": payment_intent['amount'],
-        "OrderItems": orderItems,
-        "ScheduledDate": scheduledDate,
-        "Address": address,
-        "Payment Status": "success"
-    }
+        payload = {
+            "OrderID": orderID,
+            "CustomerID": customerID,
+            "Amount": payment_intent.amount,
+            "OrderItems": orderItems,
+            "ScheduledDate": scheduledDate,
+            "Address": address,
+            "Payment Status": "success"
+        }
 
-    print(f"Payment for {payment_intent['amount']} succeeded!")
-    print("Sending orderID and customerID back to place order service...")
-    request_data, status = invoke_http(
-        PLACE_ORDER_SERVICE_URL + '/placeorder/receive-payment-status',
-        method='POST',
-        json=payload
-    )
-    print(f"{request_data}\nStatus: {status}")
-    return request_data, status
+        print(f"Payment for {payment_intent.amount} succeeded!")
+        print("Sending orderID and customerID back to place order service...")
+        request_data, status = invoke_http(
+            'http://localhost:5006/placeorder/receive-payment-status',
+            method='POST',
+            json=payload
+        )
+        print(f"{request_data}\nStatus: {status}")
+        return request_data, status
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise
 
 class Payment(db.Model):
     __tablename__ = "Payment"
@@ -207,20 +213,34 @@ def create_intent():
 def confirm_intent_for_backend_flow():
     try:
         data = request.get_json(silent=True) or {}
+        print(f"Received data: {data}")  # add
+
         raw_intent_id = data.get('payment_intent_id') or data.get('client_secret')
         intent_id = normalize_payment_intent_id(raw_intent_id)
+        print(f"Intent ID: {intent_id}")
 
         if not intent_id:
             return jsonify({'error': 'payment_intent_id is required'}), 400
 
-        payment_intent = stripe.PaymentIntent.retrieve(intent_id)
-        if payment_intent.get('status') != 'succeeded':
+        try: 
+            print("Retrieving payment intent from Stripe...")
+            payment_intent = stripe.PaymentIntent.retrieve(intent_id)
+            print(f"Status: {payment_intent.status}")
+
+        except stripe.error.StripeError as e:
+            print(f"Error retrieving payment intent: {e}")
+            return jsonify({'error': str(e)}), 400
+
+        if payment_intent.status != 'succeeded':
             return jsonify({
                 'error': 'Payment intent is not succeeded',
-                'status': payment_intent.get('status')
+                'status': payment_intent.status
             }), 400
+        
+        print("Calling handle_successful_payment_intent...")
 
         request_data, status = handle_successful_payment_intent(payment_intent)
+        print(f"handle done: {status}")
         if status >= 400:
             return jsonify({
                 'error': 'Failed to continue backend flow',
