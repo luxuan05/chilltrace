@@ -15,12 +15,12 @@ load_dotenv(BASE_DIR / ".env", override=True)
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SSL_CA = os.getenv("SSL_CA")
+    SSL_CA = (os.getenv("SSL_CA") or "").strip().strip('"').strip("'")
 
     if not SQLALCHEMY_DATABASE_URI:
         raise ValueError("DATABASE_URL is not set in .env")
 
-    if SSL_CA:
+    if SSL_CA and os.path.exists(SSL_CA):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "connect_args": {"ssl": {"ca": SSL_CA}},
             "pool_pre_ping": True

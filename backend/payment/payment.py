@@ -16,12 +16,12 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     PORT = int(os.getenv("PORT", 5002))
-    SSL_CA = os.getenv("SSL_CA")
+    SSL_CA = (os.getenv("SSL_CA") or "").strip().strip('"').strip("'")
 
     if not SQLALCHEMY_DATABASE_URI:
         raise ValueError("DATABASE_URL is not set in .env")
 
-    if SSL_CA:
+    if SSL_CA and os.path.exists(SSL_CA):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "connect_args": {"ssl": {"ca": SSL_CA}},
             "pool_pre_ping": True
@@ -40,6 +40,7 @@ db.init_app(app)
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 print(f"Stripe key: '{stripe.api_key}'")
 CURR = 'SGD'
+PLACE_ORDER_SERVICE_URL = os.getenv("PLACE_ORDER_SERVICE_URL") or "http://place_order:5006"
 
 
 def normalize_payment_intent_id(value):

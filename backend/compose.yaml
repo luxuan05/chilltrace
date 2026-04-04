@@ -1,0 +1,221 @@
+volumes:
+  rabbitmq_data:
+    name: esd_rabbitmq_data
+
+networks:
+  esd-net:
+    driver: bridge
+    name: esd-net
+
+services:
+  inventory:
+    build:
+      context: .
+      dockerfile: ./inventory/inventory.dockerfile
+    image: quantumian/inventory:esd
+    restart: always
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5001:5001"
+    networks:
+      - esd-net
+
+  order:
+    build:
+      context: .
+      dockerfile: ./order-service/order.dockerfile
+    image: quantumian/order:esd
+    restart: always
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5002:5002"
+    networks:
+      - esd-net
+
+  payment:
+    build:
+      context: .
+      dockerfile: ./payment/payment.dockerfile
+    image: quantumian/payment:esd
+    restart: always
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5004:5004"
+    networks:
+      - esd-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: esd-rabbit
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - esd-net
+
+  notification:
+    build:
+      context: .
+      dockerfile: ./notification/notification.dockerfile
+    image: quantumian/notification:esd
+    restart: always
+    depends_on:
+      - rabbitmq
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5005:5005"
+    networks:
+      - esd-net
+
+  place_order:
+    build:
+      context: .
+      dockerfile: ./place_order/place_order.dockerfile
+    image: quantumian/place_order:esd
+    restart: always
+    depends_on:
+      - inventory
+      - order
+      - payment
+      - notification
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5006:5006"
+    networks:
+      - esd-net
+
+  accept_delivery:
+    build:
+      context: .
+      dockerfile: ./accept-delivery/accept_delivery.dockerfile
+    image: quantumian/accept_delivery:esd
+    restart: always
+    depends_on:
+      - inventory
+      - order
+      - notification
+      - update_delivery_status
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5007:5007"
+    networks:
+      - esd-net
+
+  update_delivery_status:
+    build:
+      context: .
+      dockerfile: ./update-delivery-status/update_delivery_status.dockerfile
+    image: quantumian/update_delivery_status:esd
+    restart: always
+    depends_on:
+      - order
+      - notification
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5008:5008"
+    networks:
+      - esd-net
+
+  cancel_order:
+    build:
+      context: .
+      dockerfile: ./cancel_order/cancel_order.dockerfile
+    image: quantumian/cancel_order:esd
+    restart: always
+    depends_on:
+      - inventory
+      - order
+      - payment
+      - notification
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5009:5009"
+    networks:
+      - esd-net
+
+  manage_supplier:
+    build:
+      context: .
+      dockerfile: ./manage_supplier/manage_supplier.dockerfile
+    image: quantumian/manage_supplier:esd
+    restart: always
+    depends_on:
+      - inventory
+      - order
+      - supplier
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5010:5010"
+    networks:
+      - esd-net
+
+  supplier:
+    build:
+      context: .
+      dockerfile: ./supplier/supplier.dockerfile
+    image: quantumian/supplier:esd
+    restart: always
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5011:5011"
+    networks:
+      - esd-net
+
+  buyer:
+    build:
+      context: .
+      dockerfile: ./buyer/buyer.dockerfile
+    image: quantumian/buyer:esd
+    restart: always
+    env_file:
+      - ./.env
+    # not sure if need environment
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5012:5012"
+    networks:
+      - esd-net

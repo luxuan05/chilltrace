@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
 import json
 import pika
 import sys, os
 import amqp_lib
 from os import environ
+from pathlib import Path
 from invokes import invoke_http
 from dotenv import load_dotenv
 load_dotenv()
@@ -13,11 +15,20 @@ app = Flask(__name__)
 
 CORS(app)
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env", override=True)
+
 # RabbitMQ
 rabbit_host = environ.get("RABBITMQ_HOST") or "rabbitmq"
 rabbit_port = environ.get("RABBITMQ_PORT") or 5672
 exchange_name = environ.get("exchange_name") or "order_topic"
 exchange_type = environ.get("exchange_type") or "topic"
+
+# Service endpoints (Docker-friendly defaults, override via .env for local runs)
+INVENTORY_SERVICE_URL = environ.get("INVENTORY_SERVICE_URL") or "http://inventory:5001"
+ORDER_SERVICE_URL = environ.get("ORDER_SERVICE_URL") or "http://order:5002"
+PAYMENT_SERVICE_URL = environ.get("PAYMENT_SERVICE_URL") or "http://payment:5004"
+BUYER_SERVICE_URL = environ.get("BUYER_SERVICE_URL") or "http://buyer:5012"
 
 connection = None 
 channel = None
@@ -160,7 +171,7 @@ def receivePayment():
         print(f"Orchestrator received success message for Order ID: {orderID}")
 
         # update order status to PAID
-        update_result, status = invoke_http('http://localhost:5002/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
+        update_result, status = invoke_http(ORDER_SERVICE_URL + '/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
         print(f"result: {update_result}\nStatus: {status}")
 
         # get datils for each item from inventory
@@ -175,7 +186,7 @@ def receivePayment():
         
         # Fetch buyer email and ChatID for notification
         buyer_result, buyer_status = invoke_http(
-            'http://localhost:5012/buyer/' + str(customerID), method='GET'
+            BUYER_SERVICE_URL + '/buyer/' + str(customerID), method='GET'
         )
         recipient_email = buyer_result.get("Email", "") if buyer_status == 200 else ""
         chat_id         = buyer_result.get("ChatID", "") if buyer_status == 200 else ""
@@ -244,7 +255,7 @@ def checkInventory(items):
     check_result = []
     try:
         for item in items:
-            item_result, http_status = invoke_http('http://localhost:5001/inventory/check-availability/' + str(item["ItemID"]), method='GET')
+            item_result, http_status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/check-availability/' + str(item["ItemID"]), method='GET')
             # print(f"http status: {http_status}\ncheck result: {item_result}\n")
 
             if http_status != 200 or "stock available" not in item_result:
@@ -276,7 +287,7 @@ def createOrder(orderItems):
     print("Invoking the order microservice...")
 
     try:
-        order_result, http_status = invoke_http('http://localhost:5002/orders', method='POST', json=orderItems)
+        order_result, http_status = invoke_http(ORDER_SERVICE_URL + '/orders', method='POST', json=orderItems)
 
         # print(f"Status: {http_status}\nOrder Result: {order_result}")
         
@@ -304,7 +315,7 @@ def updateInventory(orderItems):
     try:
         for item in orderItems:
             item['Operation'] = "minus"
-            update_result, http_status = invoke_http('http://localhost:5001/inventory/items/' + str(item['ItemID']), method='PUT', json=item)
+            update_result, http_status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/items/' + str(item['ItemID']), method='PUT', json=item)
 
         return jsonify({"code": 200, "message": "successfully updated inventory"}), 200
 
@@ -324,7 +335,7 @@ def makePayment(paymentDetails):
     print("Invoking payment microservice...")
     
     try:
-        secret, http_status = invoke_http('http://localhost:5004/payment/create-intent', method='POST', json=paymentDetails)
+        secret, http_status = invoke_http(PAYMENT_SERVICE_URL + '/payment/create-intent', method='POST', json=paymentDetails)
 
         return secret, http_status
 
@@ -346,7 +357,7 @@ def getItem(itemID):
 
     try:
 
-        item, status = invoke_http('http://localhost:5001/inventory/items/' + str(itemID), method='GET')
+        item, status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/items/' + str(itemID), method='GET')
 
         if status != 200:
             return {

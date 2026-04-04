@@ -31,11 +31,11 @@ def _request_with_retry(method, url, retries=3, **kwargs):
 
 # ---- Public functions ------------------------------------------------------
 
-def get_delivery(order_id):
-    url = f"{DELIVERY_SERVICE_URL}/delivery/{order_id}/"
+def get_delivery(delivery_id):
+    url = f"{DELIVERY_SERVICE_URL}/delivery/{delivery_id}/"
     return _request_with_retry("GET", url)
 
 
-def update_delivery(order_id, payload):
-    url = f"{DELIVERY_SERVICE_URL}/delivery/{order_id}/"
+def update_delivery(delivery_id, payload):
+    url = f"{DELIVERY_SERVICE_URL}/delivery/{delivery_id}/"
     return _request_with_retry("PUT", url, json=payload)
