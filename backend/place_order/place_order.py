@@ -8,200 +8,186 @@ import amqp_lib
 from os import environ
 from pathlib import Path
 from invokes import invoke_http
-from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-
 CORS(app)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=True)
 
-# RabbitMQ
-rabbit_host = environ.get("RABBITMQ_HOST") or "rabbitmq"
-rabbit_port = environ.get("RABBITMQ_PORT") or 5672
-exchange_name = environ.get("exchange_name") or "order_topic"
-exchange_type = environ.get("exchange_type") or "topic"
+# ── RabbitMQ ──────────────────────────────────────────────────────────────────
+rabbit_host    = environ.get("RABBITMQ_HOST")    or "rabbitmq"
+rabbit_port    = environ.get("RABBITMQ_PORT")    or 5672
+exchange_name  = environ.get("exchange_name")    or "order_topic"
+exchange_type  = environ.get("exchange_type")    or "topic"
 
-# Service endpoints (Docker-friendly defaults, override via .env for local runs)
+# ── Service URLs ──────────────────────────────────────────────────────────────
 INVENTORY_SERVICE_URL = environ.get("INVENTORY_SERVICE_URL") or "http://inventory:5001"
-ORDER_SERVICE_URL = environ.get("ORDER_SERVICE_URL") or "http://order:5002"
-PAYMENT_SERVICE_URL = environ.get("PAYMENT_SERVICE_URL") or "http://payment:5004"
-BUYER_SERVICE_URL = environ.get("BUYER_SERVICE_URL") or "http://buyer:5012"
+ORDER_SERVICE_URL     = environ.get("ORDER_SERVICE_URL")     or "http://order:5002"
+PAYMENT_SERVICE_URL   = environ.get("PAYMENT_SERVICE_URL")   or "http://payment:5004"
+BUYER_SERVICE_URL     = environ.get("BUYER_SERVICE_URL")     or "http://buyer:5012"
 
-connection = None 
-channel = None
+connection = None
+channel    = None
 
 def connectAMQP():
-    # Use global variables to reduce number of reconnection to RabbitMQ
-    # There are better ways but this suffices for our lab
-    global connection
-    global channel
-
+    global connection, channel
     print("Connecting to AMQP broker...")
     try:
         connection, channel = amqp_lib.connect(
-                hostname=rabbit_host,
-                port=rabbit_port,
-                exchange_name=exchange_name,
-                exchange_type=exchange_type,
+            hostname=rabbit_host,
+            port=rabbit_port,
+            exchange_name=exchange_name,
+            exchange_type=exchange_type,
         )
-    except Exception as exception:
-        print(f"Unable to connect to RabbitMQ.\n     {exception=}\n")
-        exit(1) # terminate
+    except Exception as e:
+        print(f"Unable to connect to RabbitMQ.\n     {e}\n")
+        exit(1)
+
+# ============================================================================
+# PLACE ORDER
+# ============================================================================
 
 @app.route("/placeorder", methods=["POST"])
 def place_order():
-    # check if input format and data of request are JSON
-    if request.is_json:
-        try: 
-            order = request.get_json()
-            print("\nReceived an order in JSON: ", order)
+    if not request.is_json:
+        return jsonify({"code": 400, "message": "Invalid JSON input: " + str(request.get_data())}), 400
 
-            # Send over to inventory microservice
-            check_result = []
-            check_result, http_status = checkInventory(order["OrderItems"])
-            
-            # return error
-            if http_status >= 400:
-                return jsonify(check_result), http_status
+    try:
+        order = request.get_json()
+        print("\nReceived an order in JSON: ", order)
 
-            print(f"Successfully checked inventory")
-            # check if enough stock
-            for item in check_result['data']:
-                if not item['enough stock']:
-                    return jsonify({
-                        "ItemID": item['ItemID'],
-                        "Error": "Not enough stock"
-                    }), 404
-                else:
-                    # add UnitPrice and SupplierID to OrderItems
-                    for cartItem in order["OrderItems"]:
-                        if item['ItemID'] == cartItem['ItemID']:
-                            cartItem['UnitPrice'] = item['UnitPrice']
-                            # cartItem['SupplierID'] = item['SupplierID']
+        # 1. Check inventory availability
+        print("Invoking inventory microservice...")
+        check_result, http_status = checkInventory(order["OrderItems"])
 
-            # Send request to order microservice
-            order_result, http_status = createOrder(order)
+        if http_status >= 400:
+            return jsonify(check_result), http_status
 
-            # return error
-            if http_status >= 400:
-                return jsonify(order_result), http_status
-            
-            print(f"Successfully created order")
-            print(order_result)
-            customerID = order_result['order']['CustomerID']
-            orderID = order_result['order']['ID']
-            payment_amount = int(order_result['order']['TotalPrice']*100)
-            scheduledDate = order_result['order']['ScheduledDate']
-            address = order['Address']
+        print("Successfully checked inventory")
 
-            # Update inventory with new quantity for reach order item
-            update_result, http_status = updateInventory(order['OrderItems'])
-            
-            print("Successfully updated inventory")
+        # 2. Validate stock and enrich OrderItems with UnitPrice
+        for item in check_result["data"]:
+            if not item["enough stock"]:
+                return jsonify({
+                    "ItemID": item["ItemID"],
+                    "Error": "Not enough stock"
+                }), 404
 
-            # Send payment details to payment microservice
-            payment_details = {
-                "CustomerID": customerID,
-                "OrderID": orderID,
-                "Amount": payment_amount,
-                "OrderItems": order_result['order']['OrderItems'],
-                "ScheduledDate": scheduledDate,
-                "Address": address
-            }
-            
-            print(f"Code:{200}\nMessage: Make payment\nAmount: {payment_amount}\nOrderID:{orderID}")
+            for cart_item in order["OrderItems"]:
+                if item["ItemID"] == cart_item["ItemID"]:
+                    cart_item["UnitPrice"] = item["UnitPrice"]
 
-            payment_result, http_status = makePayment(payment_details)
+        # 3. Create order
+        order_result, http_status = createOrder(order)
 
-            # Ensure frontend can reliably read result.data.OrderID.
-            if isinstance(payment_result, dict):
-                if not isinstance(payment_result.get("data"), dict):
-                    payment_result["data"] = {}
-                payment_result["data"]["OrderID"] = orderID
+        if http_status >= 400:
+            return jsonify(order_result), http_status
 
-            return jsonify({
-                "code": 201,
-                "result": payment_result
-            }), 201
-        
+        print("Successfully created order")
+        print(order_result)
 
-        except Exception as e:
-            # Unexpected error in code
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
-            print("Error: {}".format(ex_str))
+        customerID     = order_result["order"]["CustomerID"]
+        orderID        = order_result["order"]["ID"]
+        payment_amount = int(order_result["order"]["TotalPrice"] * 100)
+        scheduledDate  = order_result["order"]["ScheduledDate"]
+        address        = order["Address"]
 
-            return jsonify(
-                    {
-                        "code": 500,
-                        "message": "place_order.py internal error:",
-                        "exception": ex_str,
-                    }
-            ), 500
-        
-    # if reach here, not a JSON request
-    return jsonify(
-        {
-            "code": 400,
-            "message": "Invalid JSON input: " + str(request.get_data())
+        # NOTE: Inventory deduction is handled by the frontend on payment confirmation.
+        # Do NOT call updateInventory here to avoid double-deducting stock.
+
+        # 4. Create Stripe payment intent
+        payment_details = {
+            "CustomerID":  customerID,
+            "OrderID":     orderID,
+            "Amount":      payment_amount,
+            "OrderItems":  order_result["order"]["OrderItems"],
+            "ScheduledDate": scheduledDate,
+            "Address":     address,
         }
-    ), 400
 
-@app.route('/placeorder/receive-payment-status', methods=['POST'])
+        print(f"Code: 200 | Make payment | Amount: {payment_amount} | OrderID: {orderID}")
+
+        payment_result, http_status = makePayment(payment_details)
+
+        # Ensure frontend can reliably read result.data.OrderID
+        if isinstance(payment_result, dict):
+            if not isinstance(payment_result.get("data"), dict):
+                payment_result["data"] = {}
+            payment_result["data"]["OrderID"] = orderID
+
+        return jsonify({"code": 201, "result": payment_result}), 201
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
+        print("Error: {}".format(ex_str))
+        return jsonify({"code": 500, "message": "place_order.py internal error", "exception": ex_str}), 500
+
+
+# ============================================================================
+# RECEIVE PAYMENT STATUS (post-Stripe webhook)
+# ============================================================================
+
+@app.route("/placeorder/receive-payment-status", methods=["POST"])
 def receivePayment():
     global connection, channel
     try:
         data = request.get_json(silent=True) or {}
 
-        orderID = data.get('OrderID')
-        customerID = data.get('CustomerID')
-        paymentStatus = data.get('Payment Status')
-        orderItems = data.get('OrderItems')
-        amount = int(data.get('Amount'))/100
-        scheduledDate = data.get('ScheduledDate')
-        address = data.get('Address')
+        orderID       = data.get("OrderID")
+        customerID    = data.get("CustomerID")
+        paymentStatus = data.get("Payment Status")
+        orderItems    = data.get("OrderItems")
+        amount        = int(data.get("Amount")) / 100
+        scheduledDate = data.get("ScheduledDate")
+        address       = data.get("Address")
 
-        if not orderID or paymentStatus != 'success':
-            return jsonify({'Error': 'Invalid data or payment not successful'}), 400
+        if not orderID or paymentStatus != "success":
+            return jsonify({"Error": "Invalid data or payment not successful"}), 400
 
         print(f"Orchestrator received success message for Order ID: {orderID}")
 
-        # update order status to PAID
-        update_result, status = invoke_http(ORDER_SERVICE_URL + '/orders/' + str(orderID) + "/status", method='PUT', json={'OrderStatus': "PAID"})
+        # Update order status to PAID
+        update_result, status = invoke_http(
+            ORDER_SERVICE_URL + "/orders/" + str(orderID) + "/status",
+            method="PUT",
+            json={"OrderStatus": "PAID"}
+        )
         print(f"result: {update_result}\nStatus: {status}")
 
-        # get datils for each item from inventory
-
-        receipt = "Your order has been received and payment was successful.\nOrder Items:\n" 
+        # Build receipt
+        receipt = "Your order has been received and payment was successful.\nOrder Items:\n"
         for item in orderItems:
-            itemID = item['ItemID']
+            itemID  = item["ItemID"]
             details = getItem(itemID)
-            receipt+= f"\t{details['name']}\t${details['price']:.2f}\n"
+            receipt += f"\t{details['name']}\t${details['price']:.2f}\n"
 
-        receipt+= f"Total:\t${amount:.2f}\nScheduled delivery date: {scheduledDate}\nDelivery Address: {address}\nThank you!"
-        
-        # Fetch buyer email and ChatID for notification
-        buyer_result, buyer_status = invoke_http(
-            BUYER_SERVICE_URL + '/buyer/' + str(customerID), method='GET'
+        receipt += (
+            f"Total:\t${amount:.2f}\n"
+            f"Scheduled delivery date: {scheduledDate}\n"
+            f"Delivery Address: {address}\n"
+            f"Thank you!"
         )
-        recipient_email = buyer_result.get("Email", "") if buyer_status == 200 else ""
-        chat_id         = buyer_result.get("ChatID", "") if buyer_status == 200 else ""
 
-        print("Publish message to AMQP Exchange for Notification")
+        # Fetch buyer contact details for notification
+        buyer_result, buyer_status = invoke_http(
+            BUYER_SERVICE_URL + "/buyer/" + str(customerID), method="GET"
+        )
+        recipient_email = buyer_result.get("Email", "")   if buyer_status == 200 else ""
+        chat_id         = buyer_result.get("ChatID", "")  if buyer_status == 200 else ""
+
+        # Publish notification to RabbitMQ
+        print("Publishing message to AMQP Exchange for Notification")
         message = {
             "recipient_email": recipient_email,
             "chat_id":         chat_id,
             "subject":         "Order " + str(orderID),
-            "body":            receipt
+            "body":            receipt,
         }
 
-        message_body = json.dumps(message)
-
-        # Reconnect if channel/connection is closed
         if not connection or connection.is_closed or channel.is_closed:
             connection, channel = amqp_lib.connect(
                 hostname=rabbit_host,
@@ -211,174 +197,159 @@ def receivePayment():
             )
 
         channel.basic_publish(
-            exchange=exchange_name, routing_key='order.paid', body=message_body,
-            properties=pika.BasicProperties(delivery_mode=2)
+            exchange=exchange_name,
+            routing_key="order.paid",
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2),
         )
 
+        # Create delivery job
         delivery_json = {
-            "orderId": orderID,
-            "customerId": customerID,
-            "address": address,
-            "deliveryDate": scheduledDate
+            "orderId":      orderID,
+            "customerId":   customerID,
+            "address":      address,
+            "deliveryDate": scheduledDate,
         }
 
         print("Invoking delivery service to create delivery job")
+        delivery_result, http_status = invoke_http(
+            "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI/delivery",
+            method="POST",
+            json=delivery_json,
+        )
 
-        delivery_result, http_status = invoke_http('https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI/delivery', method='POST', json=delivery_json)
-        
         if http_status != 201:
-            return jsonify({
-                "Error": "Failed to create delivery job"
-            }), 500
-    
+            return jsonify({"Error": "Failed to create delivery job"}), 500
+
         return jsonify({"code": 200, "Message": "Successfully placed order!"}), 200
-    
 
     except Exception as e:
-        # Unexpected error in code
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
+        return jsonify({"code": 500, "message": "place_order.py internal error", "exception": ex_str}), 500
 
-        return jsonify(
-                {
-                    "code": 500,
-                    "message": "place_order.py internal error:",
-                    "exception": ex_str,
-                }
-        ), 500
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
 def checkInventory(items):
-    # Send the order info to inventory microservice
-    print("Invoking inventory microservice... ")
+    """
+    Check availability for each order item.
+    Returns enriched list with enough_stock flag, UnitPrice, and SupplierID.
+    """
+    print(f">>> INVENTORY_SERVICE_URL = {INVENTORY_SERVICE_URL}")
+    for item in items:
+        url = INVENTORY_SERVICE_URL + "/inventory/check-availability/" + str(item["ItemID"])
+        print(f">>> Calling: {url}")
+        item_result, http_status = invoke_http(url, method="GET")
+        print(f">>> Response status: {http_status}")
+        print(f">>> Response body: {item_result}")
     check_result = []
     try:
         for item in items:
-            item_result, http_status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/check-availability/' + str(item["ItemID"]), method='GET')
-            # print(f"http status: {http_status}\ncheck result: {item_result}\n")
+            item_result, http_status = invoke_http(
+                INVENTORY_SERVICE_URL + "/inventory/check-availability/" + str(item["ItemID"]),
+                method="GET",
+            )
 
-            if http_status != 200 or "stock available" not in item_result:
-                return {"code": http_status, "message": "Inventory check failed", "details": item_result}, http_status
+            # ✅ FIX: key is now "stock_available" (underscore) not "stock available" (space)
+            if http_status != 200 or "stock_available" not in item_result:
+                return {
+                    "code":    http_status,
+                    "message": "Inventory check failed",
+                    "details": item_result,
+                }, http_status
 
-            if item['Quantity'] <= item_result['stock available']:
-                check_result.append({'ItemID': item['ItemID'], 'enough stock': True, "UnitPrice": item_result['UnitPrice'], "SupplierID": item_result['SupplierID']})
-            else:
-                check_result.append({'ItemID': item['ItemID'], 'enough stock': False, "UnitPrice": item_result['UnitPrice'], "SupplierID": item_result['SupplierID']})
+            enough = item["Quantity"] <= item_result["stock_available"]
+            check_result.append({
+                "ItemID":       item["ItemID"],
+                "enough stock": enough,
+                "UnitPrice":    item_result["unit_price"],    # ✅ updated key
+                "SupplierID":   item_result["supplier_id"],   # ✅ updated key
+            })
 
-        return {
-            "code": 200,
-            "data": check_result,
-        }, 200
-    
+        return {"code": 200, "data": check_result}, 200
+
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
+        return {"code": 500, "message": "check inventory internal error", "exception": ex_str}, 500
 
-        return {
-                    "code": 500,
-                    "message": "check inventory internal error:",
-                    "exception": ex_str,
-                }, 500
 
 def createOrder(orderItems):
     print("Invoking the order microservice...")
-
+    print(f">>> ORDER_SERVICE_URL = {ORDER_SERVICE_URL}")
+    print(f">>> Payload: {orderItems}")
     try:
-        order_result, http_status = invoke_http(ORDER_SERVICE_URL + '/orders', method='POST', json=orderItems)
+        order_result, http_status = invoke_http(
+            ORDER_SERVICE_URL + "/orders", method="POST", json=orderItems
+        )
+        print(f">>> Order response status: {http_status}")
+        print(f">>> Order response body: {order_result}")
 
-        # print(f"Status: {http_status}\nOrder Result: {order_result}")
-        
         if http_status != 201:
             return {"code": http_status, "message": "Create Order failed", "details": order_result}, http_status
 
         return order_result, http_status
-    
-    except Exception as e:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
-        print("Error: {}".format(ex_str))
-
-        return {
-                    "code": 500,
-                    "message": "check order internal error",
-                    "exception": ex_str,
-            }, 500
-    
-
-def updateInventory(orderItems):
-    print("Invoking the inventory microservice...")
-    
-    try:
-        for item in orderItems:
-            item['Operation'] = "minus"
-            update_result, http_status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/items/' + str(item['ItemID']), method='PUT', json=item)
-
-        return jsonify({"code": 200, "message": "successfully updated inventory"}), 200
 
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
+        return {"code": 500, "message": "create order internal error", "exception": ex_str}, 500
 
-        return jsonify({
-                    "code": 500,
-                    "message": "check Inventory internal error",
-                    "exception": ex_str,
-                }), 500
-    
+
 def makePayment(paymentDetails):
     print("Invoking payment microservice...")
-    
+    print(f">>> PAYMENT_SERVICE_URL = {PAYMENT_SERVICE_URL}")
     try:
-        secret, http_status = invoke_http(PAYMENT_SERVICE_URL + '/payment/create-intent', method='POST', json=paymentDetails)
-
+        secret, http_status = invoke_http(
+            PAYMENT_SERVICE_URL + "/payment/create-intent", method="POST", json=paymentDetails
+        )
+        print(f">>> Payment response status: {http_status}")
+        print(f">>> Payment response body: {secret}")
         return secret, http_status
 
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
+        return {"code": 500, "message": "make payment internal error", "exception": ex_str}, 500
 
-        return {
-                    "code": 500,
-                    "message": "check Payment internal error",
-                    "exception": ex_str,
-            }, 500
-    
 
 def getItem(itemID):
+    """Fetch a single inventory item by ID."""
     print(f"Fetching info from Inventory for itemID: {itemID}")
-
     try:
-
-        item, status = invoke_http(INVENTORY_SERVICE_URL + '/inventory/items/' + str(itemID), method='GET')
+        # ✅ FIX: correct route prefix /api/inventory/items
+        item, status = invoke_http(
+            INVENTORY_SERVICE_URL + "/api/inventory/items/" + str(itemID), method="GET"
+        )
 
         if status != 200:
-            return {
-                "Message": "failed to retrieve item. Check if item exists"
-            }, status
+            return {"name": f"Item {itemID}", "price": 0.0}
 
         return item
-        
+
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
         ex_str = str(e) + " at " + str(exc_type) + ": " + fname + ": line " + str(exc_tb.tb_lineno)
         print("Error: {}".format(ex_str))
+        return {"name": f"Item {itemID}", "price": 0.0}
 
-        return {
-                    "code": 500,
-                    "message": "check Inventory internal error",
-                    "exception": ex_str,
-            }, 500
 
-# Execute this program if it is run as a main script (not by 'import')
+# ============================================================================
+# RUN
+# ============================================================================
+
 if __name__ == "__main__":
     print("This is flask " + os.path.basename(__file__) + " for placing an order...")
     connectAMQP()
