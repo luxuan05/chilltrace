@@ -147,11 +147,22 @@ def getPaymentByOrder(order_id):
     print("Invoking payment microservice to get intent_id...")
     try:
         import requests as req
-        # ✅ Uses env var instead of hardcoded Docker hostname
         response = req.get(PAYMENT_SERVICE_URL + "/payment/order/" + str(order_id), timeout=10)
         if response.status_code >= 400:
             return None, response.status_code
-        return response.text.strip(), response.status_code
+        
+        # Handle both plain string and JSON response
+        try:
+            data = response.json()
+            # If it's a dict, extract the IntentID
+            if isinstance(data, dict):
+                return data.get("IntentID", ""), response.status_code
+            # If it's already a plain string value in JSON
+            return str(data), response.status_code
+        except Exception:
+            # Fall back to plain text
+            return response.text.strip(), response.status_code
+
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -251,14 +262,25 @@ def cancelDelivery(order_id):
     try:
         delivery_base = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI"
 
-        existing, http_status = invoke_http(
-            delivery_base + "/delivery/" + str(order_id) + "/", method="GET"
+        # GET all deliveries and find the one matching order_id
+        all_deliveries, http_status = invoke_http(
+            delivery_base + "/delivery/", method="GET"
         )
         if http_status >= 400:
-            return {"code": http_status, "message": "Get delivery failed", "details": existing}, http_status
+            return {"code": http_status, "message": "Get deliveries failed", "details": all_deliveries}, http_status
+
+        # Find delivery matching this order
+        deliveries = all_deliveries.get("Deliveries", []) if isinstance(all_deliveries, dict) else []
+        existing = next((d for d in deliveries if d.get("orderId") == order_id), None)
+
+        if not existing:
+            print(f"No delivery found for order {order_id} — skipping delivery cancellation")
+            return {"code": 200, "message": "No delivery found, skipping"}, 200
+
+        delivery_id = existing.get("id")
 
         result, http_status = invoke_http(
-            delivery_base + "/delivery/" + str(order_id) + "/",
+            delivery_base + "/delivery/" + str(delivery_id) + "/",
             method="PUT",
             json={
                 "address":            existing.get("address", ""),
