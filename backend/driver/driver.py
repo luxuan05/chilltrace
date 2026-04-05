@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env", override=True)
+# Load backend/.env when running from repo (driver/driver.py), and /usr/src/app/.env in Docker.
+_app_dir = Path(__file__).resolve().parent
+load_dotenv(_app_dir.parent / ".env", override=True)
+load_dotenv(_app_dir / ".env", override=True)
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -15,7 +17,7 @@ load_dotenv(BASE_DIR / ".env", override=True)
 class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SSL_CA = os.getenv("SSL_CA")
+    SSL_CA = (os.getenv("SSL_CA") or "").strip().strip('"').strip("'")
 
     if not SQLALCHEMY_DATABASE_URI:
         raise ValueError("DATABASE_URL is not set in .env")
