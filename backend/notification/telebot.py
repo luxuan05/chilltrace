@@ -155,6 +155,7 @@ async def main():
     print("Starting Telegram bot...")
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    await app.bot.delete_webhook(drop_pending_updates=True) 
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],

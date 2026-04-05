@@ -16,7 +16,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -32,7 +31,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -48,7 +46,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       PLACE_ORDER_SERVICE_URL: http://place_order:5006
@@ -85,11 +82,26 @@ services:
         condition: service_healthy
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
       - "5005:5005"
+    networks:
+      - esd-net
+
+  telebot:
+    build:
+      context: .
+      dockerfile: ./notification/telebot.dockerfile
+    image: quantumian/telebot:esd
+    restart: on-failure
+    depends_on:
+      - buyer
+    env_file:
+      - ./.env
+    environment:
+      PYTHONUNBUFFERED: 1
+      BUYER_SERVICE_URL: http://buyer:5012
     networks:
       - esd-net
 
@@ -110,7 +122,6 @@ services:
         condition: service_started
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       RABBITMQ_HOST: rabbitmq
@@ -118,7 +129,6 @@ services:
       INVENTORY_SERVICE_URL: http://inventory:5001
       PAYMENT_SERVICE_URL: http://payment:5004
       BUYER_SERVICE_URL: http://buyer:5012
-      
     ports:
       - "5006:5006"
     networks:
@@ -137,7 +147,6 @@ services:
       - update_delivery_status
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       RABBITMQ_HOST: rabbitmq
@@ -158,7 +167,6 @@ services:
       - notification
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       RABBITMQ_HOST: rabbitmq
@@ -182,7 +190,6 @@ services:
       - notification
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       ORDER_SERVICE_URL: http://order:5002
@@ -206,7 +213,6 @@ services:
       - supplier
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
       ORDER_SERVICE_URL: http://order:5002
@@ -226,7 +232,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -242,7 +247,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
