@@ -36,12 +36,8 @@ source venv/bin/activate
 (On Windows)
 venv\Scripts\activate
 
-# Step 3: Install the necessary dependencies.
-pip install flask
-pip install -r requirements.txt 
-
-# Step 4: Run Flask
-python app.py
+# Step 3: Run Docker
+docker compose up --build
 ```
 
 ## What technologies are used for this project?
