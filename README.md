@@ -17,10 +17,13 @@ git clone <YOUR_GIT_URL>
 # Step 2: Navigate to the project directory.
 cd frontend
 
-# Step 3: Install the necessary dependencies.
+# Step 3: Create Frontend .env file
+From the report copy and paste the code into a new .env file in the frontend folder
+
+# Step 4: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 5: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
@@ -29,17 +32,20 @@ npm run dev
 # Step 1: Navigate to the backend folder
 cd backend
 
-# Step 2: Create virtual environment
+# Step 2: Create Backend .env file
+From the report copy and paste the code into a new .env file in the backend folder
+
+# Step 3: Create virtual environment
 (On Mac/Linux)
 source venv/bin/activate
 
 (On Windows)
 venv\Scripts\activate
 
-# Step 3: Replace Docker ID
+# Step 4: Replace Docker ID
 In the compose.yaml file replace docker id under image
 
-#Step 4: Run Docker Compose
+#Step 5: Run Docker Compose
 docker compose up --build
 ```
 
