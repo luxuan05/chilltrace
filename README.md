@@ -35,17 +35,20 @@ cd backend
 # Step 2: Create Backend .env file
 From the report copy and paste the code into a new .env file in the backend folder
 
-# Step 3: Create virtual environment
+# Step 3: Download the ca.pem file from eLearn submission
+Copy or download the ca.pem file into the backend folder
+
+# Step 4: Create virtual environment
 (On Mac/Linux)
 source venv/bin/activate
 
 (On Windows)
 venv\Scripts\activate
 
-# Step 4: Replace Docker ID
+# Step 5: Replace Docker ID
 In the compose.yaml file replace docker id under image
 
-#Step 5: Run Docker Compose
+#Step 6: Run Docker Compose
 docker compose up --build
 ```
 
