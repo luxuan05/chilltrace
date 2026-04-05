@@ -36,7 +36,10 @@ source venv/bin/activate
 (On Windows)
 venv\Scripts\activate
 
-# Step 3: Run Docker
+# Step 3: Replace Docker ID
+In the compose.yaml file replace docker id under image
+
+#Step 4: Run Docker Compose
 docker compose up --build
 ```
 
