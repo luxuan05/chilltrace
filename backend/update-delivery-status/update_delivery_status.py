@@ -82,24 +82,39 @@ def update_delivery_job_status(order_id):
     # AMQP notification
     if new_status == "CANCELLED" and reason == "temperature_breach":
         recipient_email, chat_id = get_buyer_info(customer_id)
+
+        body = (
+            f"Hi,\n\n"
+            f"Your order #{order_id} has been cancelled due to a temperature breach during delivery.\n\n"
+            f"Our team will be in touch regarding a refund.\n\n"
+            f"We apologise for the inconvenience."
+        )
+
         publish_notification(
             routing_key="delivery.update",
             payload={
                 "recipient_email": recipient_email,
                 "chat_id":         chat_id,
-                "subject":         "Order" + order_id + " Cancelled - Temperature Breach",
-                "body":            "Your order was cancelled due to a temperature breach during delivery.",
+                "subject":         f"Order #{order_id} Cancelled - Temperature Breach",
+                "body":            body,
             },
         )
     elif new_status == "DELIVERED":
         recipient_email, chat_id = get_buyer_info(customer_id)
+
+        body = (
+            f"Hi,\n\n"
+            f"Your order #{order_id} has been successfully delivered!\n\n"
+            f"Thank you for using ChillTrace!"
+        )
+
         publish_notification(
             routing_key="delivery.update",
             payload={
                 "recipient_email": recipient_email,
                 "chat_id":         chat_id,
-                "subject":         "Order" + order_id + " Delivered",
-                "body":            "Your order has been successfully delivered!",
+                "subject":         f"Order #{order_id} Delivered Successfully",
+                "body":            body,
             },
         )
 

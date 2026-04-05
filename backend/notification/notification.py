@@ -59,7 +59,13 @@ def send_email(recipient_email, subject, body):
         print("No recipient email provided. Skipping email.")
         return
 
-    msg = MIMEText(body)
+    full_body = (
+        f"{body}\n\n"
+        f"──────────────────────────\n"
+        f"📱 Track your orders on Telegram: http://t.me/ChillTraceBot"
+    )
+
+    msg = MIMEText(full_body)
     msg["From"]    = GMAIL_FROM
     msg["To"]      = recipient_email
     msg["Subject"] = subject
