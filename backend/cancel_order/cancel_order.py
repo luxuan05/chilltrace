@@ -71,9 +71,11 @@ def cancel_order(order_id):
             print(f"Warning: Could not fetch buyer for CustomerID {customer_id}: {buyer_result}")
             recipient_email = ""
             customer_name   = "Customer"
+            chat_id         = ""
         else:
             recipient_email = buyer_result.get("Email", "")
             customer_name   = buyer_result.get("CompanyName", "Customer")
+            chat_id         = buyer_result.get("ChatID", "")
 
         # 4. Release inventory (restock cancelled items)
         release_result, http_status = releaseInventory(order_items)
@@ -108,6 +110,7 @@ def cancel_order(order_id):
             )
             publishNotification(
                 recipient_email,
+                chat_id=chat_id,
                 subject=f"Order Cancelled - #{order_id}",
                 body=(
                     f"Hi {customer_name},\n\n"
@@ -201,8 +204,7 @@ def releaseInventory(order_items):
             item_id  = item.get("ItemID")
             quantity = item.get("Quantity")
 
-            # ✅ Uses new /inventory/restock endpoint instead of GET+PUT
-            # ✅ Uses env var instead of hardcoded Docker hostname
+            
             result, http_status = invoke_http(
                 INVENTORY_SERVICE_URL + "/inventory/restock",
                 method="POST",
@@ -279,7 +281,7 @@ def cancelDelivery(order_id):
         return {"code": 500, "message": "cancelDelivery internal error", "exception": ex_str}, 500
 
 
-def publishNotification(recipient_email, subject, body):
+def publishNotification(recipient_email, chat_id, subject, body):
     print("Publishing notification to RabbitMQ...")
     try:
         connection = pika.BlockingConnection(
@@ -296,6 +298,7 @@ def publishNotification(recipient_email, subject, body):
             routing_key="order.error",
             body=json.dumps({
                 "recipient_email": recipient_email,
+                "chat_id":         chat_id,
                 "subject":         subject,
                 "body":            body,
             }),
