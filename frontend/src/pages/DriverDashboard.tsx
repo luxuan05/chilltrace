@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle, RefreshCw } from "lucide-react";
+import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle, RefreshCw, Search, ArrowUpDown } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -187,8 +187,11 @@ const AvailableJobs = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
-  const [loading, setLoading]       = useState(!_cache); // skip spinner if cache is already warm
+  const [loading, setLoading]       = useState(!_cache);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch]         = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortAsc, setSortAsc]       = useState(true);
 
   const loadJobs = useCallback(async (force = false) => {
     if (force) setRefreshing(true);
@@ -244,6 +247,24 @@ const AvailableJobs = () => {
     }
   };
 
+  const filteredAvailableJobs = jobs
+    .filter((job) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        String(job.orderId).includes(q) ||
+        (job.address ?? "").toLowerCase().includes(q);
+      const matchesDate =
+        !dateFilter ||
+        (job.deliveryDate && job.deliveryDate.slice(0, 10) === dateFilter);
+      return matchesSearch && matchesDate;
+    })
+    .sort((a, b) => {
+      const da = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0;
+      const db = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0;
+      return sortAsc ? da - db : db - da;
+    });
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -260,11 +281,44 @@ const AvailableJobs = () => {
         </Button>
       </div>
 
+      {/* Search, Date, Sort controls */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by Order ID or address..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Input
+          type="date"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          className="w-44"
+        />
+        {dateFilter && (
+          <Button variant="outline" size="sm" onClick={() => setDateFilter("")}>
+            Clear Date
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setSortAsc((prev) => !prev)}
+        >
+          <ArrowUpDown className="h-4 w-4" />
+          Date {sortAsc ? "↑" : "↓"}
+        </Button>
+      </div>
+
       {loading ? (
         <CardSkeleton />
       ) : (
         <div className="grid gap-4">
-          {jobs.map((job) => (
+          {filteredAvailableJobs.map((job) => (
             <Card key={job.id}>
               <CardContent className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -297,10 +351,10 @@ const AvailableJobs = () => {
             </Card>
           ))}
 
-          {jobs.length === 0 && (
+          {filteredAvailableJobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
-                No available delivery jobs at the moment
+                {jobs.length === 0 ? "No available delivery jobs at the moment" : "No jobs match your search"}
               </CardContent>
             </Card>
           )}
@@ -447,8 +501,11 @@ const MyDeliveries = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
-  const [loading, setLoading]       = useState(!_cache); // skip spinner if cache is already warm
+  const [loading, setLoading]       = useState(!_cache);
   const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch]         = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortAsc, setSortAsc]       = useState(true);
 
   const loadJobs = useCallback(async (force = false) => {
     if (force) setRefreshing(true);
@@ -555,6 +612,24 @@ const MyDeliveries = () => {
     }
   };
 
+  const filteredMyJobs = jobs
+    .filter((job) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        String(job.orderId).includes(q) ||
+        (job.address ?? "").toLowerCase().includes(q);
+      const matchesDate =
+        !dateFilter ||
+        (job.deliveryDate && job.deliveryDate.slice(0, 10) === dateFilter);
+      return matchesSearch && matchesDate;
+    })
+    .sort((a, b) => {
+      const da = a.deliveryDate ? new Date(a.deliveryDate).getTime() : 0;
+      const db = b.deliveryDate ? new Date(b.deliveryDate).getTime() : 0;
+      return sortAsc ? da - db : db - da;
+    });
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -570,6 +645,40 @@ const MyDeliveries = () => {
           {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
+
+      {/* Search, Date, Sort controls */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by Order ID or address..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Input
+          type="date"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          className="w-44"
+        />
+        {dateFilter && (
+          <Button variant="outline" size="sm" onClick={() => setDateFilter("")}>
+            Clear Date
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setSortAsc((prev) => !prev)}
+        >
+          <ArrowUpDown className="h-4 w-4" />
+          Date {sortAsc ? "↑" : "↓"}
+        </Button>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -588,7 +697,7 @@ const MyDeliveries = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jobs.map((job) => (
+                {filteredMyJobs.map((job) => (
                   <TableRow key={job.id}>
                     <TableCell className="font-medium">#{job.orderId}</TableCell>
                     <TableCell>{job.customerId}</TableCell>
@@ -614,10 +723,10 @@ const MyDeliveries = () => {
                   </TableRow>
                 ))}
 
-                {jobs.length === 0 && (
+                {filteredMyJobs.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      No deliveries assigned yet
+                      {jobs.length === 0 ? "No deliveries assigned yet" : "No deliveries match your search"}
                     </TableCell>
                   </TableRow>
                 )}

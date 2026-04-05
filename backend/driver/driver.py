@@ -22,7 +22,6 @@ class Config:
     if not SQLALCHEMY_DATABASE_URI:
         raise ValueError("DATABASE_URL is not set in .env")
 
-    # Only enable SSL when the CA file exists (avoids broken paths from Windows hosts in Linux containers).
     if SSL_CA and os.path.exists(SSL_CA):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "connect_args": {"ssl": {"ca": SSL_CA}},
@@ -33,9 +32,6 @@ class Config:
 
 
 # ── App & DB ──────────────────────────────────────────────────────────────────
-
-app = Flask(__name__)
-app.config.from_object(Config)
 
 from flask_cors import CORS
 

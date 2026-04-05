@@ -16,7 +16,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -32,7 +31,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -48,9 +46,9 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      PLACE_ORDER_SERVICE_URL: http://place_order:5006
     ports:
       - "5004:5004"
     networks:
@@ -67,6 +65,11 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - esd-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   notification:
     build:
@@ -75,14 +78,30 @@ services:
     image: quantumian/notification:esd
     restart: always
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
       - "5005:5005"
+    networks:
+      - esd-net
+
+  telebot:
+    build:
+      context: .
+      dockerfile: ./notification/telebot.dockerfile
+    image: quantumian/telebot:esd
+    restart: on-failure
+    depends_on:
+      - buyer
+    env_file:
+      - ./.env
+    environment:
+      PYTHONUNBUFFERED: 1
+      BUYER_SERVICE_URL: http://buyer:5012
     networks:
       - esd-net
 
@@ -93,15 +112,23 @@ services:
     image: quantumian/place_order:esd
     restart: always
     depends_on:
-      - inventory
-      - order
-      - payment
-      - notification
+      rabbitmq:
+        condition: service_healthy
+      inventory:
+        condition: service_started
+      order:
+        condition: service_started
+      payment:
+        condition: service_started
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      PAYMENT_SERVICE_URL: http://payment:5004
+      BUYER_SERVICE_URL: http://buyer:5012
     ports:
       - "5006:5006"
     networks:
@@ -120,9 +147,10 @@ services:
       - update_delivery_status
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
     ports:
       - "5007:5007"
     networks:
@@ -139,9 +167,11 @@ services:
       - notification
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      RABBITMQ_HOST: rabbitmq
+      ORDER_SERVICE_URL: http://order:5002
+      BUYER_SERVICE_URL: http://buyer:5012
     ports:
       - "5008:5008"
     networks:
@@ -160,9 +190,12 @@ services:
       - notification
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      PAYMENT_SERVICE_URL: http://payment:5004
+      BUYER_SERVICE_URL: http://buyer:5012
     ports:
       - "5009:5009"
     networks:
@@ -180,9 +213,12 @@ services:
       - supplier
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
+      ORDER_SERVICE_URL: http://order:5002
+      INVENTORY_SERVICE_URL: http://inventory:5001
+      SUPPLIER_SERVICE_URL: http://supplier:5011
+      CANCEL_ORDER_SERVICE_URL: http://cancel_order:5009
     ports:
       - "5010:5010"
     networks:
@@ -196,7 +232,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:
@@ -212,7 +247,6 @@ services:
     restart: always
     env_file:
       - ./.env
-    # not sure if need environment
     environment:
       PYTHONUNBUFFERED: 1
     ports:

@@ -74,7 +74,7 @@ def handle_successful_payment_intent(payment_intent):
         print(f"Payment for {payment_intent.amount} succeeded!")
         print("Sending orderID and customerID back to place order service...")
         request_data, status = invoke_http(
-            'http://localhost:5006/placeorder/receive-payment-status',
+            os.getenv('PLACE_ORDER_SERVICE_URL', 'http://place_order:5006') + '/placeorder/receive-payment-status',
             method='POST',
             json=payload
         )

@@ -9,13 +9,23 @@ app = Flask(__name__)
 CORS(app)
 
 # --- Service URLs ---
+BUYER_SERVICE_URL = os.environ.get("BUYER_SERVICE_URL", "http://buyer:5012")
 DELIVERY_SERVICE_URL = os.environ.get("DELIVERY_SERVICE_URL", "http://localhost:5003")
 ORDER_SERVICE_URL    = os.environ.get("ORDER_SERVICE_URL",    "http://order:5002")
 RABBITMQ_HOST        = os.environ.get("RABBITMQ_HOST",        "localhost")
-RABBITMQ_EXCHANGE    = os.environ.get("RABBITMQ_EXCHANGE",    "notification")
+RABBITMQ_EXCHANGE    = os.environ.get("RABBITMQ_EXCHANGE",    "order_topic")
 
 DELIVERY_BASE = f"{DELIVERY_SERVICE_URL}/IS213_ChillTrace/rest/DeliveryAPI"
 
+def get_buyer_info(customer_id):
+    try:
+        resp = requests.get(f"{BUYER_SERVICE_URL}/buyer/{customer_id}", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("Email", ""), data.get("ChatID", "")
+    except Exception as e:
+        print(f"Failed to fetch buyer info: {e}")
+    return ""
 
 def publish_notification(routing_key: str, payload: dict):
     try:
@@ -59,7 +69,7 @@ def update_delivery_job_status(order_id):
                 else new_status
             )
             resp = requests.put(
-                f"{ORDER_SERVICE_URL}/orders/{order_id}",
+                f"{ORDER_SERVICE_URL}/orders/{order_id}/status",
                 json={"OrderStatus": order_status},
             )
             if not resp.ok:
@@ -71,24 +81,25 @@ def update_delivery_job_status(order_id):
 
     # AMQP notification
     if new_status == "CANCELLED" and reason == "temperature_breach":
+        recipient_email, chat_id = get_buyer_info(customer_id)
         publish_notification(
-            routing_key="notification.order.cancelled",
+            routing_key="delivery.update",
             payload={
-                "event":       "ORDER_CANCELLED",
-                "reason":      "temperature_breach",
-                "order_id":    order_id,
-                "customer_id": customer_id,
-                "message":     "Your order was cancelled due to a temperature breach during delivery.",
+                "recipient_email": recipient_email,
+                "chat_id":         chat_id,
+                "subject":         "Order Cancelled - Temperature Breach",
+                "body":            "Your order was cancelled due to a temperature breach during delivery.",
             },
         )
     elif new_status == "DELIVERED":
+        recipient_email, chat_id = get_buyer_info(customer_id)
         publish_notification(
-            routing_key="notification.order.delivered",
+            routing_key="delivery.update",
             payload={
-                "event":       "ORDER_DELIVERED",
-                "order_id":    order_id,
-                "customer_id": customer_id,
-                "message":     "Your order has been successfully delivered!",
+                "recipient_email": recipient_email,
+                "chat_id":         chat_id,
+                "subject":         "Order Delivered",
+                "body":            "Your order has been successfully delivered!",
             },
         )
 

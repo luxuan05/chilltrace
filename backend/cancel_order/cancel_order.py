@@ -71,9 +71,11 @@ def cancel_order(order_id):
             print(f"Warning: Could not fetch buyer for CustomerID {customer_id}: {buyer_result}")
             recipient_email = ""
             customer_name   = "Customer"
+            chat_id         = ""
         else:
             recipient_email = buyer_result.get("Email", "")
             customer_name   = buyer_result.get("CompanyName", "Customer")
+            chat_id         = buyer_result.get("ChatID", "")
 
         # 4. Release inventory (restock cancelled items)
         release_result, http_status = releaseInventory(order_items)
@@ -108,6 +110,7 @@ def cancel_order(order_id):
             )
             publishNotification(
                 recipient_email,
+                chat_id=chat_id,
                 subject=f"Order Cancelled - #{order_id}",
                 body=(
                     f"Hi {customer_name},\n\n"
@@ -144,11 +147,22 @@ def getPaymentByOrder(order_id):
     print("Invoking payment microservice to get intent_id...")
     try:
         import requests as req
-        # ✅ Uses env var instead of hardcoded Docker hostname
         response = req.get(PAYMENT_SERVICE_URL + "/payment/order/" + str(order_id), timeout=10)
         if response.status_code >= 400:
             return None, response.status_code
-        return response.text.strip(), response.status_code
+        
+        # Handle both plain string and JSON response
+        try:
+            data = response.json()
+            # If it's a dict, extract the IntentID
+            if isinstance(data, dict):
+                return data.get("IntentID", ""), response.status_code
+            # If it's already a plain string value in JSON
+            return str(data), response.status_code
+        except Exception:
+            # Fall back to plain text
+            return response.text.strip(), response.status_code
+
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         fname  = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -201,8 +215,7 @@ def releaseInventory(order_items):
             item_id  = item.get("ItemID")
             quantity = item.get("Quantity")
 
-            # ✅ Uses new /inventory/restock endpoint instead of GET+PUT
-            # ✅ Uses env var instead of hardcoded Docker hostname
+            
             result, http_status = invoke_http(
                 INVENTORY_SERVICE_URL + "/inventory/restock",
                 method="POST",
@@ -249,14 +262,25 @@ def cancelDelivery(order_id):
     try:
         delivery_base = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI"
 
-        existing, http_status = invoke_http(
-            delivery_base + "/delivery/" + str(order_id) + "/", method="GET"
+        # GET all deliveries and find the one matching order_id
+        all_deliveries, http_status = invoke_http(
+            delivery_base + "/delivery/", method="GET"
         )
         if http_status >= 400:
-            return {"code": http_status, "message": "Get delivery failed", "details": existing}, http_status
+            return {"code": http_status, "message": "Get deliveries failed", "details": all_deliveries}, http_status
+
+        # Find delivery matching this order
+        deliveries = all_deliveries.get("Deliveries", []) if isinstance(all_deliveries, dict) else []
+        existing = next((d for d in deliveries if d.get("orderId") == order_id), None)
+
+        if not existing:
+            print(f"No delivery found for order {order_id} — skipping delivery cancellation")
+            return {"code": 200, "message": "No delivery found, skipping"}, 200
+
+        delivery_id = existing.get("id")
 
         result, http_status = invoke_http(
-            delivery_base + "/delivery/" + str(order_id) + "/",
+            delivery_base + "/delivery/" + str(delivery_id) + "/",
             method="PUT",
             json={
                 "address":            existing.get("address", ""),
@@ -279,7 +303,7 @@ def cancelDelivery(order_id):
         return {"code": 500, "message": "cancelDelivery internal error", "exception": ex_str}, 500
 
 
-def publishNotification(recipient_email, subject, body):
+def publishNotification(recipient_email, chat_id, subject, body):
     print("Publishing notification to RabbitMQ...")
     try:
         connection = pika.BlockingConnection(
@@ -296,6 +320,7 @@ def publishNotification(recipient_email, subject, body):
             routing_key="order.error",
             body=json.dumps({
                 "recipient_email": recipient_email,
+                "chat_id":         chat_id,
                 "subject":         subject,
                 "body":            body,
             }),
