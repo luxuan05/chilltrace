@@ -20,7 +20,7 @@ class Config:
     if not SQLALCHEMY_DATABASE_URI:
         raise ValueError("DATABASE_URL is not set in .env")
 
-    if SSL_CA:
+    if SSL_CA and os.path.exists(SSL_CA):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "connect_args": {"ssl": {"ca": SSL_CA}},
             "pool_pre_ping": True
@@ -31,9 +31,6 @@ class Config:
 
 # ── App & DB ──────────────────────────────────────────────────────────────────
 
-app = Flask(__name__)
-app.config.from_object(Config)
-
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -42,6 +39,9 @@ CORS(app)
 
 db = SQLAlchemy()
 db.init_app(app)
+
+with app.app_context():
+    db.create_all()
 
 
 # ── Model ─────────────────────────────────────────────────────────────────────

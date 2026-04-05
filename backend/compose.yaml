@@ -68,6 +68,11 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - esd-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   notification:
     build:
@@ -76,7 +81,8 @@ services:
     image: quantumian/notification:esd
     restart: always
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - ./.env
     # not sure if need environment
@@ -94,10 +100,14 @@ services:
     image: quantumian/place_order:esd
     restart: always
     depends_on:
-      - inventory
-      - order
-      - payment
-      - notification
+      rabbitmq:
+        condition: service_healthy
+      inventory:
+        condition: service_started
+      order:
+        condition: service_started
+      payment:
+        condition: service_started
     env_file:
       - ./.env
     # not sure if need environment
@@ -153,6 +163,7 @@ services:
       PYTHONUNBUFFERED: 1
       RABBITMQ_HOST: rabbitmq
       ORDER_SERVICE_URL: http://order:5002
+      BUYER_SERVICE_URL: http://buyer:5012
     ports:
       - "5008:5008"
     networks:
@@ -236,5 +247,20 @@ services:
       PYTHONUNBUFFERED: 1
     ports:
       - "5012:5012"
+    networks:
+      - esd-net
+
+  driver:
+    build:
+      context: .
+      dockerfile: ./driver/driver.dockerfile
+    image: quantumian/driver:esd
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5013:5013"
     networks:
       - esd-net
