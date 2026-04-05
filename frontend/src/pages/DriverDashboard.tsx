@@ -1,28 +1,51 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Truck, ClipboardList, MapPin, Thermometer, PlayCircle, RefreshCw, Search, ArrowUpDown } from "lucide-react";
+import {
+  Truck,
+  ClipboardList,
+  MapPin,
+  Thermometer,
+  PlayCircle,
+  RefreshCw,
+  Search,
+  ArrowUpDown,
+} from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Service URLs ──────────────────────────────────────────────────────────────
-const ORDER_SERVICE_URL           = "http://localhost:5002";
-const INVENTORY_SERVICE_URL       = "http://localhost:5001";
+const ORDER_SERVICE_URL = "http://localhost:5002";
+const INVENTORY_SERVICE_URL = "http://localhost:5001";
 const UPDATE_DELIVERY_SERVICE_URL = "http://localhost:5008";
-const DELIVERY_API                = "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
+const DELIVERY_API =
+  "https://personal-zsuepeep.outsystemscloud.com/IS213_ChillTrace/rest/DeliveryAPI";
 const ACCEPT_DELIVERY_SERVICE_URL =
   import.meta.env.VITE_ACCEPT_DELIVERY_SERVICE_URL ?? "http://localhost:5007";
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const navItems = [
-  { label: "Available Jobs", path: "/driver",            icon: <ClipboardList className="h-4 w-4" /> },
-  { label: "My Deliveries",  path: "/driver/deliveries", icon: <Truck className="h-4 w-4" /> },
+  {
+    label: "Available Jobs",
+    path: "/driver",
+    icon: <ClipboardList className="h-4 w-4" />,
+  },
+  {
+    label: "My Deliveries",
+    path: "/driver/deliveries",
+    icon: <Truck className="h-4 w-4" />,
+  },
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -79,15 +102,15 @@ fetchAllDeliveries();
 // ── PUT delivery ──────────────────────────────────────────────────────────────
 async function putDelivery(
   current: DeliveryJob,
-  partial: Partial<DeliveryJob>
+  partial: Partial<DeliveryJob>,
 ): Promise<Response> {
   const full = {
-    address:            current.address            ?? "",
-    deliveryDate:       current.deliveryDate       ?? null,
-    deliveryStatus:     current.deliveryStatus     ?? "",
-    driver:             current.driver             ?? 0,
+    address: current.address ?? "",
+    deliveryDate: current.deliveryDate ?? null,
+    deliveryStatus: current.deliveryStatus ?? "",
+    driver: current.driver ?? 0,
     initialTemperature: current.initialTemperature ?? 0,
-    finalTemperature:   current.finalTemperature   ?? 0,
+    finalTemperature: current.finalTemperature ?? 0,
     ...partial,
   };
   const res = await fetch(`${DELIVERY_API}/delivery/${current.id}/`, {
@@ -102,7 +125,7 @@ async function putDelivery(
 
 // ── Temp range ────────────────────────────────────────────────────────────────
 async function fetchTempRangeForOrder(
-  orderId: number
+  orderId: number,
 ): Promise<{ minTemp: number | null; maxTemp: number | null }> {
   const orderRes = await fetch(`${ORDER_SERVICE_URL}/orders/${orderId}`);
   if (!orderRes.ok) throw new Error(`Order ${orderId} not found`);
@@ -120,15 +143,23 @@ async function fetchTempRangeForOrder(
       const itemId = oi.ItemID ?? oi.item_id;
       if (!itemId) return;
       try {
-        const invRes = await fetch(`${INVENTORY_SERVICE_URL}/inventory/items/${itemId}`);
+        const invRes = await fetch(
+          `${INVENTORY_SERVICE_URL}/api/inventory/items/${itemId}`,
+        );
         if (!invRes.ok) return;
         const inv = await invRes.json();
-        const invMin: number | null = inv.MinTemperature ?? inv.min_temperature ?? null;
-        const invMax: number | null = inv.MaxTemperature ?? inv.max_temperature ?? null;
-        if (invMin !== null) minTemp = minTemp === null ? invMin : Math.max(minTemp, invMin);
-        if (invMax !== null) maxTemp = maxTemp === null ? invMax : Math.min(maxTemp, invMax);
-      } catch { /* ignore */ }
-    })
+        const invMin: number | null =
+          inv.MinTemperature ?? inv.min_temperature ?? null;
+        const invMax: number | null =
+          inv.MaxTemperature ?? inv.max_temperature ?? null;
+        if (invMin !== null)
+          minTemp = minTemp === null ? invMin : Math.max(minTemp, invMin);
+        if (invMax !== null)
+          maxTemp = maxTemp === null ? invMax : Math.min(maxTemp, invMax);
+      } catch {
+        /* ignore */
+      }
+    }),
   );
 
   return { minTemp, maxTemp };
@@ -137,13 +168,20 @@ async function fetchTempRangeForOrder(
 // ── Badge helper ──────────────────────────────────────────────────────────────
 function getStatusBadgeClass(status: string) {
   switch ((status ?? "").toUpperCase()) {
-    case "DELIVERED":          return "bg-green-100 text-green-700 border-green-200";
-    case "CANCELLED":          return "bg-red-100 text-red-700 border-red-200";
-    case "FAILED_TEMP_BREACH": return "bg-orange-100 text-orange-700 border-orange-200";
-    case "IN_TRANSIT":         return "bg-blue-100 text-blue-700 border-blue-200";
-    case "SCHEDULED":          return "bg-purple-100 text-purple-700 border-purple-200";
-    case "ACCEPTED":           return "bg-yellow-100 text-yellow-700 border-yellow-200";
-    default:                   return "bg-muted text-muted-foreground";
+    case "DELIVERED":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "CANCELLED":
+      return "bg-red-100 text-red-700 border-red-200";
+    case "FAILED_TEMP_BREACH":
+      return "bg-orange-100 text-orange-700 border-orange-200";
+    case "IN_TRANSIT":
+      return "bg-blue-100 text-blue-700 border-blue-200";
+    case "SCHEDULED":
+      return "bg-purple-100 text-purple-700 border-purple-200";
+    case "ACCEPTED":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    default:
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -186,36 +224,43 @@ const AvailableJobs = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
-  const [loading, setLoading]       = useState(!_cache);
+  const [jobs, setJobs] = useState<DeliveryJob[]>([]);
+  const [loading, setLoading] = useState(!_cache);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch]         = useState("");
+  const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const [sortAsc, setSortAsc]       = useState(true);
+  const [sortAsc, setSortAsc] = useState(true);
 
-  const loadJobs = useCallback(async (force = false) => {
-    if (force) setRefreshing(true);
-    else if (!_cache) setLoading(true);
-    try {
-      const all = await fetchAllDeliveries(force);
-      setJobs(
-        all.filter(
-          (d) => !d.driver && (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED"
-        )
-      );
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to load available jobs",
-        description: err instanceof Error ? err.message : String(err),
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [toast]);
+  const loadJobs = useCallback(
+    async (force = false) => {
+      if (force) setRefreshing(true);
+      else if (!_cache) setLoading(true);
+      try {
+        const all = await fetchAllDeliveries(force);
+        setJobs(
+          all.filter(
+            (d) =>
+              !d.driver &&
+              (d.deliveryStatus ?? "").toUpperCase() === "SCHEDULED",
+          ),
+        );
+      } catch (err: unknown) {
+        toast({
+          title: "Failed to load available jobs",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [toast],
+  );
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   const acceptJob = async (job: DeliveryJob) => {
     if (!user) return;
@@ -228,7 +273,7 @@ const AvailableJobs = () => {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ driverId: user.ID }),
-        }
+        },
       );
       if (!res.ok) throw new Error(await res.text());
 
@@ -268,7 +313,9 @@ const AvailableJobs = () => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Available Delivery Jobs</h1>
+        <h1 className="text-2xl font-bold text-foreground">
+          Available Delivery Jobs
+        </h1>
         <Button
           variant="outline"
           size="sm"
@@ -276,7 +323,9 @@ const AvailableJobs = () => {
           disabled={refreshing}
           onClick={() => loadJobs(true)}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+          />
           {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
@@ -324,8 +373,12 @@ const AvailableJobs = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-foreground">Order #{job.orderId}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}>
+                      <span className="font-bold text-foreground">
+                        Order #{job.orderId}
+                      </span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}
+                      >
                         {job.deliveryStatus}
                       </span>
                     </div>
@@ -335,10 +388,13 @@ const AvailableJobs = () => {
                     </div>
                     {job.deliveryDate && (
                       <p className="text-sm text-muted-foreground">
-                        Delivery Date: {new Date(job.deliveryDate).toLocaleDateString()}
+                        Delivery Date:{" "}
+                        {new Date(job.deliveryDate).toLocaleDateString()}
                       </p>
                     )}
-                    <p className="text-sm text-muted-foreground">Customer ID: {job.customerId}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Customer ID: {job.customerId}
+                    </p>
                   </div>
                   <Button
                     onClick={() => acceptJob(job)}
@@ -354,7 +410,9 @@ const AvailableJobs = () => {
           {filteredAvailableJobs.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
-                {jobs.length === 0 ? "No available delivery jobs at the moment" : "No jobs match your search"}
+                {jobs.length === 0
+                  ? "No available delivery jobs at the moment"
+                  : "No jobs match your search"}
               </CardContent>
             </Card>
           )}
@@ -367,21 +425,27 @@ const AvailableJobs = () => {
 // ── Temperature input cell ────────────────────────────────────────────────────
 interface TempCellProps {
   job: DeliveryJob;
-  onSave: (job: DeliveryJob, initTemp: number, finalTemp: number) => Promise<void>;
+  onSave: (
+    job: DeliveryJob,
+    initTemp: number,
+    finalTemp: number,
+  ) => Promise<void>;
 }
 
 const TemperatureCell = ({ job, onSave }: TempCellProps) => {
   const status = (job.deliveryStatus ?? "").toUpperCase();
 
-  const [initTemp,  setInitTemp]  = useState(
-    job.initialTemperature != null ? String(job.initialTemperature) : ""
+  const [initTemp, setInitTemp] = useState(
+    job.initialTemperature != null ? String(job.initialTemperature) : "",
   );
   const [finalTemp, setFinalTemp] = useState(
-    job.finalTemperature != null ? String(job.finalTemperature) : ""
+    job.finalTemperature != null ? String(job.finalTemperature) : "",
   );
   const [saving, setSaving] = useState(false);
 
-  const isFinal = ["DELIVERED", "CANCELLED", "FAILED_TEMP_BREACH"].includes(status);
+  const isFinal = ["DELIVERED", "CANCELLED", "FAILED_TEMP_BREACH"].includes(
+    status,
+  );
   if (isFinal) {
     return (
       <div className="text-xs text-muted-foreground space-y-0.5">
@@ -484,7 +548,11 @@ const StartDeliveryCell = ({ job, onStart }: StartDeliveryCellProps) => {
       className="h-7 text-xs gap-1.5 border-blue-300 text-blue-600 hover:bg-blue-50"
       disabled={starting || !canStart}
       onClick={handleStart}
-      title={!canStart ? `Delivery date is ${job.deliveryDate}` : "Start this delivery"}
+      title={
+        !canStart
+          ? `Delivery date is ${job.deliveryDate}`
+          : "Start this delivery"
+      }
     >
       <PlayCircle className="h-3.5 w-3.5" />
       {starting
@@ -500,32 +568,37 @@ const StartDeliveryCell = ({ job, onStart }: StartDeliveryCellProps) => {
 const MyDeliveries = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [jobs, setJobs]             = useState<DeliveryJob[]>([]);
-  const [loading, setLoading]       = useState(!_cache);
+  const [jobs, setJobs] = useState<DeliveryJob[]>([]);
+  const [loading, setLoading] = useState(!_cache);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch]         = useState("");
+  const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const [sortAsc, setSortAsc]       = useState(true);
+  const [sortAsc, setSortAsc] = useState(true);
 
-  const loadJobs = useCallback(async (force = false) => {
-    if (force) setRefreshing(true);
-    else if (!_cache) setLoading(true);
-    try {
-      const all = await fetchAllDeliveries(force);
-      setJobs(all.filter((d) => d.driver === user?.ID));
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to load deliveries",
-        description: err instanceof Error ? err.message : String(err),
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [toast, user?.ID]);
+  const loadJobs = useCallback(
+    async (force = false) => {
+      if (force) setRefreshing(true);
+      else if (!_cache) setLoading(true);
+      try {
+        const all = await fetchAllDeliveries(force);
+        setJobs(all.filter((d) => d.driver === user?.ID));
+      } catch (err: unknown) {
+        toast({
+          title: "Failed to load deliveries",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [toast, user?.ID],
+  );
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   // ── ACCEPTED → IN_TRANSIT ───────────────────────────────────────────────
   const handleStartDelivery = async (job: DeliveryJob) => {
@@ -534,7 +607,9 @@ const MyDeliveries = () => {
       if (!res.ok) throw new Error(await res.text());
       // Update local state directly — cache already patched by putDelivery
       setJobs((prev) =>
-        prev.map((j) => (j.id === job.id ? { ...j, deliveryStatus: "IN_TRANSIT" } : j))
+        prev.map((j) =>
+          j.id === job.id ? { ...j, deliveryStatus: "IN_TRANSIT" } : j,
+        ),
       );
       toast({ title: `Order #${job.orderId} is now In Transit` });
     } catch (err: unknown) {
@@ -550,7 +625,7 @@ const MyDeliveries = () => {
   const handleTemperatureSave = async (
     job: DeliveryJob,
     initTemp: number,
-    finalTemp: number
+    finalTemp: number,
   ) => {
     try {
       const { minTemp, maxTemp } = await fetchTempRangeForOrder(job.orderId);
@@ -563,8 +638,8 @@ const MyDeliveries = () => {
 
       const tempRes = await putDelivery(job, {
         initialTemperature: initTemp,
-        finalTemperature:   finalTemp,
-        deliveryStatus:     newDeliveryStatus,
+        finalTemperature: finalTemp,
+        deliveryStatus: newDeliveryStatus,
       });
       if (!tempRes.ok) throw new Error("Failed to save temperatures");
 
@@ -574,11 +649,11 @@ const MyDeliveries = () => {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            status:      newDeliveryStatus,
+            status: newDeliveryStatus,
             customer_id: job.customerId,
             ...(breached ? { reason: "temperature_breach" } : {}),
           }),
-        }
+        },
       );
       if (!statusRes.ok) throw new Error("Failed to update delivery status");
 
@@ -586,9 +661,14 @@ const MyDeliveries = () => {
       setJobs((prev) =>
         prev.map((j) =>
           j.id === job.id
-            ? { ...j, initialTemperature: initTemp, finalTemperature: finalTemp, deliveryStatus: newDeliveryStatus }
-            : j
-        )
+            ? {
+                ...j,
+                initialTemperature: initTemp,
+                finalTemperature: finalTemp,
+                deliveryStatus: newDeliveryStatus,
+              }
+            : j,
+        ),
       );
 
       if (breached) {
@@ -606,7 +686,8 @@ const MyDeliveries = () => {
     } catch (err: unknown) {
       toast({
         title: "Error processing temperature",
-        description: (err instanceof Error ? err.message : String(err)) ?? "Unknown error",
+        description:
+          (err instanceof Error ? err.message : String(err)) ?? "Unknown error",
         variant: "destructive",
       });
     }
@@ -641,7 +722,9 @@ const MyDeliveries = () => {
           disabled={refreshing}
           onClick={() => loadJobs(true)}
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+          />
           {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
@@ -699,7 +782,9 @@ const MyDeliveries = () => {
               <TableBody>
                 {filteredMyJobs.map((job) => (
                   <TableRow key={job.id}>
-                    <TableCell className="font-medium">#{job.orderId}</TableCell>
+                    <TableCell className="font-medium">
+                      #{job.orderId}
+                    </TableCell>
                     <TableCell>{job.customerId}</TableCell>
                     <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                       {job.address}
@@ -710,23 +795,36 @@ const MyDeliveries = () => {
                         : "—"}
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getStatusBadgeClass(job.deliveryStatus)}`}
+                      >
                         {job.deliveryStatus.replace(/_/g, " ")}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <StartDeliveryCell job={job} onStart={handleStartDelivery} />
+                      <StartDeliveryCell
+                        job={job}
+                        onStart={handleStartDelivery}
+                      />
                     </TableCell>
                     <TableCell>
-                      <TemperatureCell job={job} onSave={handleTemperatureSave} />
+                      <TemperatureCell
+                        job={job}
+                        onSave={handleTemperatureSave}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
 
                 {filteredMyJobs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      {jobs.length === 0 ? "No deliveries assigned yet" : "No deliveries match your search"}
+                    <TableCell
+                      colSpan={7}
+                      className="text-center text-muted-foreground py-8"
+                    >
+                      {jobs.length === 0
+                        ? "No deliveries assigned yet"
+                        : "No deliveries match your search"}
                     </TableCell>
                   </TableRow>
                 )}

@@ -25,7 +25,7 @@ def get_buyer_info(customer_id):
             return data.get("Email", ""), data.get("ChatID", "")
     except Exception as e:
         print(f"Failed to fetch buyer info: {e}")
-    return ""
+    return "", ""
 
 def publish_notification(routing_key: str, payload: dict):
     try:
@@ -87,7 +87,7 @@ def update_delivery_job_status(order_id):
             payload={
                 "recipient_email": recipient_email,
                 "chat_id":         chat_id,
-                "subject":         "Order Cancelled - Temperature Breach",
+                "subject":         "Order" + order_id + " Cancelled - Temperature Breach",
                 "body":            "Your order was cancelled due to a temperature breach during delivery.",
             },
         )
@@ -98,7 +98,7 @@ def update_delivery_job_status(order_id):
             payload={
                 "recipient_email": recipient_email,
                 "chat_id":         chat_id,
-                "subject":         "Order Delivered",
+                "subject":         "Order" + order_id + " Delivered",
                 "body":            "Your order has been successfully delivered!",
             },
         )

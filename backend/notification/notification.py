@@ -10,9 +10,9 @@ import requests
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file into os.environ
 
-rabbit_host   = "rabbitmq"
-rabbit_port   = 5672
-exchange_name = "order_topic"
+rabbit_host   = os.getenv("RABBITMQ_HOST", "rabbitmq")
+rabbit_port   = int(os.getenv("RABBITMQ_PORT", "5672"))
+exchange_name = os.getenv("RABBITMQ_EXCHANGE", "order_topic")
 exchange_type = "topic"
 queue_name    = "Activity_Log"
 

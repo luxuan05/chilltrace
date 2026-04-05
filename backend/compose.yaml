@@ -170,6 +170,7 @@ services:
     environment:
       PYTHONUNBUFFERED: 1
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_EXCHANGE: order_topic
       ORDER_SERVICE_URL: http://order:5002
       BUYER_SERVICE_URL: http://buyer:5012
     ports:
